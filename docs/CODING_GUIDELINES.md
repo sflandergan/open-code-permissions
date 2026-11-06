@@ -49,4 +49,9 @@ Read this guide when planning, implementing, or reviewing TypeScript changes. Te
 
 ## Changed-code audit
 
-For changed TypeScript, apply [the changed-code audit](./agents/changed-code-audit.md) as completion evidence.
+For changed TypeScript, audit compliance with this guide using two evidence tables:
+
+- **Exported declarations:** for every changed exported declaration, record its file and line range, contract purpose, hidden invariants/lifecycle effects/error semantics/serialization rules, and the JSDoc location.
+- **Long bodies:** for every changed function-like body over 40 physical lines, including functions, methods, callbacks, arrow functions, and tests, record the declaration and complete body bounds plus either the decomposition made or a specific declarative/intrinsically sequential readability reason extraction would harm.
+
+If a table has no applicable declarations, state that explicitly. Use both tables as completion evidence; JSDoc states the contract without filler tags.

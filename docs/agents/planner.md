@@ -14,7 +14,7 @@
 
 ## Repo Specifics
 
-- For each executable task that changes TypeScript, name the [changed-code audit](./changed-code-audit.md) tables as completion evidence and make them part of task acceptance.
+- For each executable task that changes TypeScript, name the changed-code audit tables from `docs/CODING_GUIDELINES.md` as completion evidence and make them part of task acceptance.
 - Test names follow the naming rules in `docs/TESTING.md`; check them in the planner self-review.
 
 ## Area Docs
