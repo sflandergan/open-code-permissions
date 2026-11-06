@@ -1,0 +1,734 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "ref": "main",
+    "channel": "preview",
+    "commit": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9"
+  },
+  "scope": {
+    "skills": "project",
+    "nativeAgents": "project"
+  },
+  "harnesses": [
+    "claude-code",
+    "opencode",
+    "codex"
+  ],
+  "skillDistribution": {
+    "claude-code": {
+      "authored": "vercel-cli",
+      "thirdParty": "vercel-cli"
+    },
+    "opencode": {
+      "authored": "vercel-cli",
+      "thirdParty": "vercel-cli"
+    },
+    "codex": {
+      "authored": "vercel-cli",
+      "thirdParty": "vercel-cli"
+    }
+  },
+  "configuration": {
+    "opencodeModelProfile": "opencode-go-mistral",
+    "contributions": {
+      "claude-code:settings": {
+        "sourceHash": "6b0da561ddc84d1a904ffd6b8ad0fee30cbaefdf7f5cbab79ee93575b0373485",
+        "values": {
+          "permissions": {
+            "allow": [
+              "Grep(./**)",
+              "Glob(./**)",
+              "Read(./**)",
+              "Edit(./**)",
+              "Write(./**)",
+              "Bash(git diff:*)",
+              "Bash(git log:*)",
+              "Bash(git show:*)",
+              "Bash(git status:*)",
+              "Bash(git grep:*)",
+              "Bash(git merge-base:*)",
+              "Bash(git rev-parse:*)",
+              "Bash(git ls-files:*)",
+              "Bash(git ls-tree:*)",
+              "Bash(git check-ignore:*)",
+              "Bash(git branch:*)",
+              "Bash(git checkout:*)",
+              "Bash(git add:*)",
+              "Bash(git commit:*)",
+              "Bash(git rm:*)",
+              "Bash(git mv:*)",
+              "Bash(git rebase:*)",
+              "Bash(git fetch:*)",
+              "Bash(git pull:*)",
+              "Bash(git pull)",
+              "Bash(ls:*)",
+              "Bash(cat:*)",
+              "Bash(find:*)",
+              "Bash(grep:*)",
+              "Bash(rg:*)",
+              "Bash(head:*)",
+              "Bash(tail:*)",
+              "Bash(wc:*)",
+              "Bash(sort:*)",
+              "Bash(diff:*)",
+              "Bash(jq:*)",
+              "Bash(test:*)",
+              "Bash(pwd)",
+              "Bash(echo:*)",
+              "Bash(date:*)",
+              "Bash(which:*)",
+              "Bash(mkdir:*)",
+              "Bash(bash *scripts/fetch-pr-comments.sh:*)",
+              "Bash(bash *scripts/create-bug-issue.sh:*)",
+              "Bash(bash *scripts/publish-branch.sh)",
+              "Bash(bash *scripts/publish-branch.sh --existing-pr * --expected-head * --head-branch *)",
+              "Bash(bash *scripts/publish-and-ready.sh)",
+              "Bash(bash *scripts/ensure-fresh.sh:*)",
+              "Bash(gh issue list:*)",
+              "Bash(gh issue view:*)",
+              "Bash(gh search issues:*)",
+              "Bash(gh label list:*)",
+              "Bash(gh pr list:*)",
+              "Bash(gh pr view:*)",
+              "Bash(gh pr checks:*)",
+              "Bash(gh run list:*)",
+              "Bash(gh run view:*)"
+            ],
+            "ask": [
+              "Bash(git reset --hard:*)",
+              "Bash(rm:*)",
+              "Bash(rm -rf:*)",
+              "Bash(gh issue create:*)",
+              "Bash(gh issue edit:*)",
+              "Bash(bash *scripts/reply-to-pr-comment.sh:*)",
+              "Bash(bash *scripts/update-bug-issue.sh:*)"
+            ],
+            "deny": [
+              "Bash(git branch -d:*)",
+              "Bash(git branch -D:*)",
+              "Bash(git worktree remove:*)",
+              "Bash(git push:*)",
+              "Bash(gh pr create:*)",
+              "Bash(gh pr ready:*)",
+              "Bash(rm -rf /:*)",
+              "Bash(rm -rf ~:*)",
+              "Bash(rm -rf ..:*)"
+            ]
+          }
+        }
+      },
+      "codex:config": {
+        "sourceHash": "872e51445b6d8209accf692b08d66eeaba5d5b28fb4aef9e3930201e0264afaa",
+        "values": {}
+      },
+      "opencode:config": {
+        "sourceHash": "f8e55b53d92fbb348d68c7fa876a87e13a1e2386afbb1a6a5e46ae6b7b109b0c",
+        "values": {
+          "agent": {
+            "plan": {
+              "disable": true
+            },
+            "build": {
+              "model": "opencode-go/glm-5.3-flash",
+              "permission": {
+                "edit": "allow",
+                "question": "allow",
+                "task": {
+                  "*": "deny",
+                  "explore": "allow",
+                  "implement-task": "allow"
+                },
+                "bash": {
+                  "true": "allow",
+                  ":": "allow",
+                  "pwd": "allow",
+                  "test *": "allow",
+                  "read *": "allow",
+                  "set -e": "allow",
+                  "set +e": "allow",
+                  "gh pr list *": "allow",
+                  "gh pr view *": "allow",
+                  "gh pr checks *": "allow",
+                  "gh run list *": "allow",
+                  "gh run view *": "allow",
+                  "gh issue list *": "allow",
+                  "gh issue view *": "allow",
+                  "gh search issues *": "allow",
+                  "gh label list": "allow",
+                  "gh label list *": "allow",
+                  "gh repo view *": "allow",
+                  "gh issue create *": "ask",
+                  "gh issue edit *": "ask",
+                  "git add *": "allow",
+                  "git branch *": "allow",
+                  "git checkout *": "allow",
+                  "git check-ignore *": "allow",
+                  "git commit *": "allow",
+                  "git diff *": "allow",
+                  "git fetch *": "allow",
+                  "git grep *": "allow",
+                  "git log *": "allow",
+                  "git ls-files *": "allow",
+                  "git ls-tree *": "allow",
+                  "git merge-base *": "allow",
+                  "git mv *": "allow",
+                  "git pull *": "allow",
+                  "git rebase *": "allow",
+                  "GIT_EDITOR=true git rebase *": "allow",
+                  "git remote -v": "allow",
+                  "git remote get-url *": "allow",
+                  "git rev-parse *": "allow",
+                  "git rm *": "allow",
+                  "git show *": "allow",
+                  "git status *": "allow",
+                  "git reset --soft *": "allow",
+                  "git reset --mixed *": "allow",
+                  "git reset --hard *": "ask",
+                  "bash *scripts/publish-branch.sh": "allow",
+                  "bash *scripts/publish-branch.sh --existing-pr * --expected-head * --head-branch *": "ask",
+                  "bash *scripts/publish-and-ready.sh": "ask",
+                  "bash *scripts/ensure-fresh.sh": "allow",
+                  "bash *scripts/ensure-fresh.sh *": "allow",
+                  "bash *scripts/fetch-pr-comments.sh *": "allow",
+                  "bash \"*scripts/fetch-pr-comments.sh\" *": "allow",
+                  "bash *scripts/reply-to-pr-comment.sh *": "ask",
+                  "bash \"*scripts/reply-to-pr-comment.sh\" *": "ask",
+                  "bash *scripts/create-bug-issue.sh *": "allow",
+                  "bash *scripts/update-bug-issue.sh *": "allow",
+                  "bash *scripts/start-server.sh *": "allow",
+                  "bash *scripts/stop-server.sh *": "allow",
+                  "ctx7 library *": "allow",
+                  "ctx7 docs *": "allow",
+                  "cat *": "allow",
+                  "cmp *": "allow",
+                  "comm *": "allow",
+                  "cut *": "allow",
+                  "diff *": "allow",
+                  "dirname *": "allow",
+                  "find *": "allow",
+                  "fold *": "allow",
+                  "grep *": "allow",
+                  "head *": "allow",
+                  "jq *": "allow",
+                  "ls *": "allow",
+                  "nl *": "allow",
+                  "paste *": "allow",
+                  "readlink *": "allow",
+                  "rg *": "allow",
+                  "sed *": "allow",
+                  "seq *": "allow",
+                  "sort *": "allow",
+                  "stat *": "allow",
+                  "tail *": "allow",
+                  "tr *": "allow",
+                  "uniq *": "allow",
+                  "wc *": "allow",
+                  "xargs rg *": "allow",
+                  "file *": "allow",
+                  "echo *": "allow",
+                  "printf *": "allow",
+                  "date *": "allow",
+                  "which *": "allow",
+                  "command -v *": "allow",
+                  "mktemp": "allow",
+                  "sleep *": "allow",
+                  "mkdir plans/*": "allow",
+                  "mkdir -p plans/*": "allow",
+                  "mkdir \"plans/*\"": "allow",
+                  "mkdir -p \"plans/*\"": "allow",
+                  "mkdir /tmp/opencode-permissions/*": "allow",
+                  "mkdir -p /tmp/opencode-permissions/*": "allow",
+                  "mkdir \"/tmp/opencode-permissions/*\"": "allow",
+                  "mkdir -p \"/tmp/opencode-permissions/*\"": "allow",
+                  "curl * -L *": "ask",
+                  "curl * --location*": "ask",
+                  "curl * -d *": "ask",
+                  "curl * --data *": "ask",
+                  "curl * -F *": "ask",
+                  "curl * --form *": "ask",
+                  "curl * -T *": "ask",
+                  "curl * --upload-file *": "ask",
+                  "curl * -X POST *": "ask",
+                  "curl * -X PUT *": "ask",
+                  "curl * -X PATCH *": "ask",
+                  "curl * -X DELETE *": "ask",
+                  "curl * -o *": "ask",
+                  "curl * --output *": "ask",
+                  "sed -i *": "deny",
+                  "sed *-i*": "deny",
+                  "sort *-o*": "deny",
+                  "python *": "deny",
+                  "python3 *": "deny",
+                  "ruby *": "deny",
+                  "php *": "deny",
+                  "perl *": "deny",
+                  "deno *": "deny",
+                  "* node -e *": "deny",
+                  "* node --eval *": "deny",
+                  "* node -p *": "deny",
+                  "* node --print *": "deny",
+                  "* bun -e *": "deny",
+                  "*rg *--pre*": "deny",
+                  "*rg *--hostname-bin*": "deny",
+                  "gh pr create *": "deny",
+                  "gh pr ready *": "deny",
+                  "git push*": "deny",
+                  "git branch -d *": "deny",
+                  "git branch -D *": "deny",
+                  "git worktree remove *": "deny",
+                  "git diff *--ext-diff*": "deny",
+                  "git diff *--textconv*": "deny",
+                  "git diff *--output*": "deny",
+                  "git log *--ext-diff*": "deny",
+                  "git log *--textconv*": "deny",
+                  "git log *--output*": "deny",
+                  "git show *--ext-diff*": "deny",
+                  "git show *--textconv*": "deny",
+                  "git show *--output*": "deny",
+                  "gh issue list * --web*": "deny",
+                  "gh search issues * --web*": "deny",
+                  "*<*": "deny",
+                  "*>*/Applications/*": "deny",
+                  "*>*/Library/*": "deny",
+                  "*>*/System/*": "deny",
+                  "*>*/Users/*": "deny",
+                  "*>*/Volumes/*": "deny",
+                  "*>*/bin/*": "deny",
+                  "*>*/etc/*": "deny",
+                  "*>*/home/*": "deny",
+                  "*>*/opt/*": "deny",
+                  "*>*/private/*": "deny",
+                  "*>*/sbin/*": "deny",
+                  "*>*/usr/*": "deny",
+                  "*>*/var/*": "deny",
+                  "*>*..*": "deny",
+                  "*>*~/*": "deny",
+                  "*>*$*": "deny",
+                  "*>*`*": "deny"
+                }
+              }
+            },
+            "explore": {
+              "model": "opencode-go/deepseek-v4.1-flash",
+              "variant": "low"
+            },
+            "implement-task": {
+              "model": "opencode-go/deepseek-v4.1-flash",
+              "variant": "max",
+              "mode": "subagent"
+            }
+          },
+          "permission": {
+            "bash": {
+              "*": "ask",
+              "*>*": "ask",
+              "*<*": "ask",
+              "bun -e *": "deny",
+              "deno eval *": "deny",
+              "node -e *": "deny",
+              "node --eval *": "deny",
+              "node -p *": "deny",
+              "node --print *": "deny",
+              "perl -e *": "deny",
+              "php -r *": "deny",
+              "python -c *": "deny",
+              "python3 -c *": "deny",
+              "ruby -e *": "deny"
+            },
+            "edit": {
+              "*": "deny"
+            },
+            "grep": "allow",
+            "glob": "allow",
+            "read": {
+              "*": "allow"
+            },
+            "webfetch": "ask",
+            "websearch": "ask",
+            "external_directory": {
+              "/tmp/opencode-permissions/**": "allow",
+              "~/.local/share/opencode/tool-output/**": "allow",
+              "~/.claude/skills/**": "allow",
+              "~/.agents/skills/**": "allow",
+              "~/.config/opencode/skills/**": "allow",
+              "/var/**": "deny"
+            }
+          }
+        }
+      },
+      "opencode:model-profile:mistral": {
+        "sourceHash": "6e6b0f73fae114779f36fdde5e4de5d15a6be597dce277cc93955c13fe814430",
+        "values": {
+          "provider": {
+            "mistral-3rd-party": {
+              "name": "Mistral 3rd-party (V1 compatibility)",
+              "npm": "@ai-sdk/openai-compatible",
+              "env": [
+                "MISTRAL_API_KEY"
+              ],
+              "options": {
+                "baseURL": "https://api.mistral.ai/v1"
+              },
+              "models": {
+                "zai-glm-5-3": {
+                  "name": "GLM 5.3 (Mistral)",
+                  "reasoning": true,
+                  "interleaved": {
+                    "field": "reasoning_content"
+                  },
+                  "temperature": true,
+                  "tool_call": true,
+                  "attachment": false,
+                  "limit": {
+                    "context": 1000000,
+                    "output": 131072
+                  },
+                  "modalities": {
+                    "input": [
+                      "text"
+                    ],
+                    "output": [
+                      "text"
+                    ]
+                  },
+                  "cost": {
+                    "input": 1.4,
+                    "output": 4.4,
+                    "cache_read": 0.14
+                  },
+                  "variants": {
+                    "low": {
+                      "reasoningEffort": "low"
+                    },
+                    "high": {
+                      "reasoningEffort": "high"
+                    },
+                    "max": {
+                      "reasoningEffort": "max"
+                    }
+                  }
+                },
+                "zai-glm-5-3-flash": {
+                  "name": "GLM 5.3 Flash (Mistral)",
+                  "reasoning": true,
+                  "interleaved": {
+                    "field": "reasoning_content"
+                  },
+                  "temperature": true,
+                  "tool_call": true,
+                  "attachment": false,
+                  "limit": {
+                    "context": 1048576,
+                    "output": 131072
+                  },
+                  "modalities": {
+                    "input": [
+                      "text"
+                    ],
+                    "output": [
+                      "text"
+                    ]
+                  },
+                  "cost": {
+                    "input": 0.15,
+                    "output": 0.5,
+                    "cache_read": 0.03
+                  },
+                  "variants": {
+                    "low": {
+                      "reasoningEffort": "low"
+                    },
+                    "high": {
+                      "reasoningEffort": "high"
+                    },
+                    "max": {
+                      "reasoningEffort": "max"
+                    }
+                  }
+                },
+                "deepseek-v4-1-flash-1017": {
+                  "name": "DeepSeek V4.1 Flash (Mistral)",
+                  "reasoning": true,
+                  "interleaved": {
+                    "field": "reasoning_content"
+                  },
+                  "temperature": true,
+                  "tool_call": true,
+                  "attachment": false,
+                  "limit": {
+                    "context": 1048576,
+                    "output": 128000
+                  },
+                  "modalities": {
+                    "input": [
+                      "text"
+                    ],
+                    "output": [
+                      "text"
+                    ]
+                  },
+                  "cost": {
+                    "input": 0.3,
+                    "output": 1.2,
+                    "cache_read": 0.007
+                  },
+                  "variants": {
+                    "low": {
+                      "reasoningEffort": "low"
+                    },
+                    "high": {
+                      "reasoningEffort": "high"
+                    },
+                    "max": {
+                      "reasoningEffort": "max"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "model": "mistral-3rd-party/zai-glm-5-3",
+          "agent": {
+            "build": {
+              "model": "mistral-3rd-party/zai-glm-5-3"
+            }
+          }
+        }
+      }
+    }
+  },
+  "managedAssets": [
+    {
+      "assetId": "authored-skill:brainstorm",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/brainstorm",
+      "releaseHash": "dd5a63d6a22fe4e15b6ee6b29812d4aebd40ede9eab9726e514e5c7f11b306c3"
+    },
+    {
+      "assetId": "authored-skill:bugfix",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/bugfix",
+      "releaseHash": "01ba29194c99ec5ca3ae8a4f46f3df9c4d8a728f88e624a64e5696028761a4fc"
+    },
+    {
+      "assetId": "authored-skill:feature-documentation",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/feature-documentation",
+      "releaseHash": "a8e77f74b5427ab83ad0dc06377de5b5db45f60e2fa1f48c02049cc6a275cebc"
+    },
+    {
+      "assetId": "authored-skill:finish",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/finish",
+      "releaseHash": "de3b922326216f9c9b3d6534b5bb1e71fc56c57fcf8d1e8c847c10cf6ca09508"
+    },
+    {
+      "assetId": "authored-skill:git-publish",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/git-publish",
+      "releaseHash": "582126cd6bd69e0339d6436a37ca46ffaa8355d1d16209ea1d68ad313e6b90f3"
+    },
+    {
+      "assetId": "authored-skill:github-pr-comments",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/github-pr-comments",
+      "releaseHash": "659ef70fd7d8cd3c7a35a394ed38b0d0b945f22bbf56e3344c0aa225348d7e34"
+    },
+    {
+      "assetId": "authored-skill:grill-with-docs",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/grill-with-docs",
+      "releaseHash": "7409efaad659af0698ce487153e5e40cedfb71966d843b5447115da66b0b3bc3"
+    },
+    {
+      "assetId": "authored-skill:idea",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/idea",
+      "releaseHash": "9ec843dcbf1d6eb36a34b3e953d6b60bf6155345cb0c4fd0fce584163cfc1d8f"
+    },
+    {
+      "assetId": "authored-skill:implement",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/implement",
+      "releaseHash": "fc6708723d0a4e577aeb600a6d860a5b5a9236a167783c9b40fe8c4baccbc0e9"
+    },
+    {
+      "assetId": "authored-skill:implement-task",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/implement-task",
+      "releaseHash": "169d725ab8aca0f342e28f99265279f3432cd178d3eaa5eba56ce473ef2b7a2e"
+    },
+    {
+      "assetId": "authored-skill:planner",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/planner",
+      "releaseHash": "2e1061179153863044d600f19f992ef579b41cccc7fcbeae6b96e542d2620f13"
+    },
+    {
+      "assetId": "authored-skill:planning-structure",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/planning-structure",
+      "releaseHash": "928bfab80e4b82df181e1c93e77057a10d81fb7b84f1bd15a3ab347df67597f9"
+    },
+    {
+      "assetId": "authored-skill:review-code",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/review-code",
+      "releaseHash": "3d6959e34ccf2116990a02b30ebb06dc94f3a81c601326ab290f33dfc841d920"
+    },
+    {
+      "assetId": "authored-skill:review-plan",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/review-plan",
+      "releaseHash": "611c66441f03eca7d3bbfc7d21995d04b2d3486c246e1bf4d068e131cc0f8230"
+    },
+    {
+      "assetId": "authored-skill:setup",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/setup",
+      "releaseHash": "0b963b7c9587dd6773a34794961e2d8d0dde7280ebdf7dfbd5fafaa8aab444df"
+    },
+    {
+      "assetId": "authored-skill:verification-before-completion",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/verification-before-completion",
+      "releaseHash": "962c2cb6170cfa5e38611cd2733faca831b7ea9241c5e3098b9a611e07a66f5b"
+    },
+    {
+      "assetId": "third-party-skill:context7-cli",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/context7-cli",
+      "releaseHash": "f22d21491528a0aaaf21a2a7c546428ffd208852473d6afbaf5e2d4845388639"
+    },
+    {
+      "assetId": "third-party-skill:domain-modeling",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/domain-modeling",
+      "releaseHash": "67343881f5def98487d56243155716110afbcbf22ec92421c882d532b941cb17"
+    },
+    {
+      "assetId": "third-party-skill:grilling",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/grilling",
+      "releaseHash": "bf1e75d96966edd298902d63348c828921b8b095d7306d0cdd56b4a591a7a82b"
+    },
+    {
+      "assetId": "third-party-skill:writing-skills",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/writing-skills",
+      "releaseHash": "e5dfc1a942f56dc757421b0d87ae1f38ab693ebc71138e65268fd408bb5c93d3"
+    },
+    {
+      "assetId": "third-party-skill:test-driven-development",
+      "harness": "all",
+      "scope": "project",
+      "target": ".agents/skills/test-driven-development",
+      "releaseHash": "a4126a9c5f17be3c228aa9e5755898ade283448b86099f56f40852e8c14532be"
+    },
+    {
+      "assetId": "opencode-subagent:implement-task",
+      "harness": "opencode",
+      "scope": "project",
+      "target": ".opencode/agents/implement-task.md",
+      "releaseHash": "0d7006b5c1d237b3fffabc3d45159ba3cd807b5dc02c4d70f8e485291aa7ca54"
+    },
+    {
+      "assetId": "claude-subagent:explore",
+      "harness": "claude-code",
+      "scope": "project",
+      "target": ".claude/agents/explore.md",
+      "releaseHash": "d0c65c4d6388ba0d8f48c90e388d379320f0e0ad510b2204a24df3ac8ee7e478"
+    },
+    {
+      "assetId": "claude-subagent:implement-task",
+      "harness": "claude-code",
+      "scope": "project",
+      "target": ".claude/agents/implement-task.md",
+      "releaseHash": "044d2b958f5e89f3990a28d3640cb683b96b1a95e740cd76c4d375c2c91d1f58"
+    },
+    {
+      "assetId": "codex-subagent:implement-task",
+      "harness": "codex",
+      "scope": "project",
+      "target": ".codex/agents/implement-task.toml",
+      "releaseHash": "a07da052809a01101ae60961fd96f50ede53f9241840ce5625836434e296a485"
+    },
+    {
+      "assetId": "opencode-subagent:explore",
+      "harness": "opencode",
+      "scope": "project",
+      "target": ".opencode/agents/explore.md",
+      "releaseHash": "67e5f5a7d32675c688c2f1423c36ac0b32f42b77ba8dc00ec15aa43c3d607102"
+    },
+    {
+      "assetId": "opencode-plugin:mistral-3rd-party",
+      "harness": "opencode",
+      "scope": "project",
+      "target": ".opencode/plugins/mistral-3rd-party.ts",
+      "releaseHash": "f64740fa473608f03aecce5a52afa5157e334cee6bc09532956bbced29150a2e"
+    },
+    {
+      "assetId": "opencode-plugin:mistral-3rd-party-compatibility",
+      "harness": "opencode",
+      "scope": "project",
+      "target": ".opencode/plugins/mistral-3rd-party/compatibility.ts",
+      "releaseHash": "23bc9523c30cd94bfb3234c79bc697436ff814525a780ddfdbdc6c710498117a"
+    },
+    {
+      "assetId": "opencode-plugin:mistral-3rd-party-readme",
+      "harness": "opencode",
+      "scope": "project",
+      "target": ".opencode/plugins/mistral-3rd-party/README.md",
+      "releaseHash": "fb0fa0c5d0f61a7dd785b809c1bc35dd6b83968fd41e6553a888cc6411d66211"
+    },
+    {
+      "assetId": "claude-code:settings",
+      "harness": "claude-code",
+      "scope": "project",
+      "target": ".claude/settings.json",
+      "releaseHash": "6b0da561ddc84d1a904ffd6b8ad0fee30cbaefdf7f5cbab79ee93575b0373485"
+    },
+    {
+      "assetId": "codex:config",
+      "harness": "codex",
+      "scope": "project",
+      "target": ".codex/config.toml",
+      "releaseHash": "872e51445b6d8209accf692b08d66eeaba5d5b28fb4aef9e3930201e0264afaa"
+    },
+    {
+      "assetId": "opencode:config",
+      "harness": "opencode",
+      "scope": "project",
+      "target": "opencode.json",
+      "releaseHash": "f8e55b53d92fbb348d68c7fa876a87e13a1e2386afbb1a6a5e46ae6b7b109b0c"
+    },
+    {
+      "assetId": "opencode:model-profile:mistral",
+      "harness": "opencode",
+      "scope": "project",
+      "target": "opencode.json",
+      "releaseHash": "6e6b0f73fae114779f36fdde5e4de5d15a6be597dce277cc93955c13fe814430"
+    }
+  ],
+  "retained": []
+}

@@ -1,0 +1,152 @@
+{
+  "version": 1,
+  "skills": {
+    "brainstorm": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorm/SKILL.md",
+      "computedHash": "dd5a63d6a22fe4e15b6ee6b29812d4aebd40ede9eab9726e514e5c7f11b306c3"
+    },
+    "bugfix": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/bugfix/SKILL.md",
+      "computedHash": "01ba29194c99ec5ca3ae8a4f46f3df9c4d8a728f88e624a64e5696028761a4fc"
+    },
+    "context7-cli": {
+      "source": "upstash/context7",
+      "ref": "dedb03d589e6e03e8fb5a2b858bd3c853ac6893e",
+      "sourceType": "github",
+      "skillPath": "skills/context7-cli/SKILL.md",
+      "computedHash": "f22d21491528a0aaaf21a2a7c546428ffd208852473d6afbaf5e2d4845388639"
+    },
+    "domain-modeling": {
+      "source": "mattpocock/skills",
+      "ref": "272f99b22574f50e4266791c86b9302682970e23",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/domain-modeling/SKILL.md",
+      "computedHash": "67343881f5def98487d56243155716110afbcbf22ec92421c882d532b941cb17"
+    },
+    "feature-documentation": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/feature-documentation/SKILL.md",
+      "computedHash": "a8e77f74b5427ab83ad0dc06377de5b5db45f60e2fa1f48c02049cc6a275cebc"
+    },
+    "finish": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/finish/SKILL.md",
+      "computedHash": "de3b922326216f9c9b3d6534b5bb1e71fc56c57fcf8d1e8c847c10cf6ca09508"
+    },
+    "git-publish": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/git-publish/SKILL.md",
+      "computedHash": "582126cd6bd69e0339d6436a37ca46ffaa8355d1d16209ea1d68ad313e6b90f3"
+    },
+    "github-pr-comments": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/github-pr-comments/SKILL.md",
+      "computedHash": "659ef70fd7d8cd3c7a35a394ed38b0d0b945f22bbf56e3344c0aa225348d7e34"
+    },
+    "grill-with-docs": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/grill-with-docs/SKILL.md",
+      "computedHash": "7409efaad659af0698ce487153e5e40cedfb71966d843b5447115da66b0b3bc3"
+    },
+    "grilling": {
+      "source": "mattpocock/skills",
+      "ref": "272f99b22574f50e4266791c86b9302682970e23",
+      "sourceType": "github",
+      "skillPath": "skills/productivity/grilling/SKILL.md",
+      "computedHash": "bf1e75d96966edd298902d63348c828921b8b095d7306d0cdd56b4a591a7a82b"
+    },
+    "idea": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/idea/SKILL.md",
+      "computedHash": "9ec843dcbf1d6eb36a34b3e953d6b60bf6155345cb0c4fd0fce584163cfc1d8f"
+    },
+    "implement": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/implement/SKILL.md",
+      "computedHash": "fc6708723d0a4e577aeb600a6d860a5b5a9236a167783c9b40fe8c4baccbc0e9"
+    },
+    "implement-task": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/implement-task/SKILL.md",
+      "computedHash": "169d725ab8aca0f342e28f99265279f3432cd178d3eaa5eba56ce473ef2b7a2e"
+    },
+    "planner": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/planner/SKILL.md",
+      "computedHash": "2e1061179153863044d600f19f992ef579b41cccc7fcbeae6b96e542d2620f13"
+    },
+    "planning-structure": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/planning-structure/SKILL.md",
+      "computedHash": "928bfab80e4b82df181e1c93e77057a10d81fb7b84f1bd15a3ab347df67597f9"
+    },
+    "review-code": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/review-code/SKILL.md",
+      "computedHash": "3d6959e34ccf2116990a02b30ebb06dc94f3a81c601326ab290f33dfc841d920"
+    },
+    "review-plan": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/review-plan/SKILL.md",
+      "computedHash": "611c66441f03eca7d3bbfc7d21995d04b2d3486c246e1bf4d068e131cc0f8230"
+    },
+    "setup": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/setup/SKILL.md",
+      "computedHash": "0b963b7c9587dd6773a34794961e2d8d0dde7280ebdf7dfbd5fafaa8aab444df"
+    },
+    "test-driven-development": {
+      "source": "obra/superpowers",
+      "ref": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797",
+      "sourceType": "github",
+      "skillPath": "skills/test-driven-development/SKILL.md",
+      "computedHash": "a4126a9c5f17be3c228aa9e5755898ade283448b86099f56f40852e8c14532be"
+    },
+    "verification-before-completion": {
+      "source": "sflandergan/agentic-coding-next",
+      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
+      "sourceType": "github",
+      "skillPath": "skills/verification-before-completion/SKILL.md",
+      "computedHash": "962c2cb6170cfa5e38611cd2733faca831b7ea9241c5e3098b9a611e07a66f5b"
+    },
+    "writing-skills": {
+      "source": "obra/superpowers",
+      "ref": "b36e0829c6d0140e93cfef2ca599b1b07d4a7797",
+      "sourceType": "github",
+      "skillPath": "skills/writing-skills/SKILL.md",
+      "computedHash": "e5dfc1a942f56dc757421b0d87ae1f38ab693ebc71138e65268fd408bb5c93d3"
+    }
+  }
+}
