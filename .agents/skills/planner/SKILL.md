@@ -32,56 +32,14 @@ not invoke brainstorming automatically.
 1. **Scope check.** If the spec covers multiple independent subsystems, suggest
    breaking it into separate plans — one per subsystem, each producing working,
    testable software on its own.
-2. **UI-design preflight** (below).
-3. **Resolve uncertainty** (below) — plans ship with zero open questions.
-4. **Map the file structure.** Before defining tasks, decide which files are
+2. **Resolve uncertainty** (below) — plans ship with zero open questions.
+3. **Map the file structure.** Before defining tasks, decide which files are
    created or modified and each one's responsibility. Design units with clear
    boundaries; prefer smaller, focused files; files that change together live
    together; follow established patterns in existing codebases.
-5. **Write the plan** following `/planning-structure`: the `plan.md` index plus
+4. **Write the plan** following `/planning-structure`: the `plan.md` index plus
    `tasks/NN-<slug>.md` files.
-6. **Self-review** (below), fix inline, and report.
-
-## UI-design preflight
-
-Before task decomposition, read the approved spec's `## UI Design` section and
-note the marker. The marker is the spec author's classification — do not change
-it.
-
-### `ui-design: required`
-
-Verify the following before proceeding:
-
-1. `plans/<feature-dir>/ui-design.md` exists as the final handoff.
-2. The handoff contains the following sections: Approval, Scope, Source locations,
-   State inventory, Scenario manifest, Responsive contract, Interaction
-   contract, Accessibility contract, Simulated integrations, and
-   Deferred production work.
-3. Every referenced tracked source, test, fixture, and adapter exists.
-4. Every stable preview scenario URL listed in the Scenario manifest is
-   reachable.
-
-When a check fails, report the exact gap to the human — do not silently
-reclassify the spec as `not-required` or silently redesign the approved
-presentation.
-If `plans/<feature-dir>/ui-design.md` is missing, tell the human to run `ui-design`
-to produce the handoff before continuing.
-Treat the final handoff as read-only input; no production-plan task may create or
-change it.
-
-Plan the deferred production work plus the creation of
-`plans/<feature-dir>/ui-integration.md` and production-isolation evidence.
-
-### `ui-design: not-required`
-
-Plan the feature through the standard path; no UI-design artifacts, preview
-scenarios, or ui-integration evidence.
-
-### Contradictions
-
-An obvious contradiction between the marker and the spec content — for example a
-new-screen spec marked `not-required`, or a backend-only spec marked `required`
-— is reported to the human rather than silently reclassified.
+5. **Self-review** (below), fix inline, and report.
 
 ## Resolving uncertainty (mandatory)
 

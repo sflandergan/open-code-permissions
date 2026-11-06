@@ -5,6 +5,7 @@
 - Spec and plan excerpts provided by the implement controller
 - `docs/CODING_GUIDELINES.md` for coding rules
 - `docs/TESTING.md` for verification rules
+- `docs/agents/changed-code-audit.md`
 - Docs explicitly named by the task
 
 ## Verify
@@ -18,7 +19,6 @@ bun test
 
 ## Repo Specifics
 
-<!-- TODO: Replace with repository-specific task-worker configuration:
-     the pre-commit checks to run before committing;
-     the changed-code audit document and the enumerations the worker must report. -->
+- For changed TypeScript, apply the worker responsibilities in [Changed-code Audit](./changed-code-audit.md#responsibilities).
+- Before committing, run `bun run typecheck` and `bun test` for the touched code.
 

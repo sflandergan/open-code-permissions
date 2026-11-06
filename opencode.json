@@ -12,8 +12,7 @@
         "task": {
           "*": "deny",
           "explore": "allow",
-          "implement-task": "allow",
-          "ui-design-task": "allow"
+          "implement-task": "allow"
         },
         "bash": {
           "true": "allow",
@@ -74,11 +73,6 @@
           "bash *scripts/update-bug-issue.sh *": "allow",
           "bash *scripts/start-server.sh *": "allow",
           "bash *scripts/stop-server.sh *": "allow",
-          "bash .agents/scripts/ui-design/preview.sh start": "allow",
-          "bash .agents/scripts/ui-design/preview.sh probe": "allow",
-          "bash .agents/scripts/ui-design/preview.sh stop": "allow",
-          "node *.agents/skills/impeccable/scripts/*": "allow",
-          "node *.claude/skills/impeccable/scripts/*": "allow",
           "ctx7 library *": "allow",
           "ctx7 docs *": "allow",
           "cat *": "allow",
@@ -197,10 +191,6 @@
     "implement-task": {
       "model": "opencode-go/deepseek-v4.1-flash",
       "variant": "max",
-      "mode": "subagent"
-    },
-    "ui-design-task": {
-      "model": "opencode-go/glm-5.3-flash",
       "mode": "subagent"
     }
   },

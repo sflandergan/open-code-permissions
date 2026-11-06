@@ -78,13 +78,6 @@
       "skillPath": "skills/idea/SKILL.md",
       "computedHash": "9ec843dcbf1d6eb36a34b3e953d6b60bf6155345cb0c4fd0fce584163cfc1d8f"
     },
-    "impeccable": {
-      "source": "pbakaus/impeccable",
-      "ref": "da99645a58400ed7acb201e6904f9413efd89c6e",
-      "sourceType": "github",
-      "skillPath": ".agents/skills/impeccable/SKILL.md",
-      "computedHash": "e07098370ad7fd4605b67d305d8c06623a5c7d7737d2364e30932294ef880ff6"
-    },
     "implement": {
       "source": "sflandergan/agentic-coding-next",
       "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
@@ -140,20 +133,6 @@
       "sourceType": "github",
       "skillPath": "skills/test-driven-development/SKILL.md",
       "computedHash": "a4126a9c5f17be3c228aa9e5755898ade283448b86099f56f40852e8c14532be"
-    },
-    "ui-design": {
-      "source": "sflandergan/agentic-coding-next",
-      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
-      "sourceType": "github",
-      "skillPath": "skills/ui-design/SKILL.md",
-      "computedHash": "c31246b553961bf1a796449a1f6e854adc1e52bc127c6c81373290c82790060e"
-    },
-    "ui-design-task": {
-      "source": "sflandergan/agentic-coding-next",
-      "ref": "efc850c0d000fe613d2bbd61a4adc94b748ef8f9",
-      "sourceType": "github",
-      "skillPath": "skills/ui-design-task/SKILL.md",
-      "computedHash": "8dc5b25973ff2a2c0cbab3f98ae072bda27d1477d5bfbb71dff2dba5eb202cfd"
     },
     "verification-before-completion": {
       "source": "sflandergan/agentic-coding-next",

@@ -92,10 +92,7 @@
               "Bash(gh pr view:*)",
               "Bash(gh pr checks:*)",
               "Bash(gh run list:*)",
-              "Bash(gh run view:*)",
-              "Bash(bash .agents/scripts/ui-design/preview.sh start)",
-              "Bash(bash .agents/scripts/ui-design/preview.sh probe)",
-              "Bash(bash .agents/scripts/ui-design/preview.sh stop)"
+              "Bash(gh run view:*)"
             ],
             "ask": [
               "Bash(git reset --hard:*)",
@@ -139,8 +136,7 @@
                 "task": {
                   "*": "deny",
                   "explore": "allow",
-                  "implement-task": "allow",
-                  "ui-design-task": "allow"
+                  "implement-task": "allow"
                 },
                 "bash": {
                   "true": "allow",
@@ -201,11 +197,6 @@
                   "bash *scripts/update-bug-issue.sh *": "allow",
                   "bash *scripts/start-server.sh *": "allow",
                   "bash *scripts/stop-server.sh *": "allow",
-                  "bash .agents/scripts/ui-design/preview.sh start": "allow",
-                  "bash .agents/scripts/ui-design/preview.sh probe": "allow",
-                  "bash .agents/scripts/ui-design/preview.sh stop": "allow",
-                  "node *.agents/skills/impeccable/scripts/*": "allow",
-                  "node *.claude/skills/impeccable/scripts/*": "allow",
                   "ctx7 library *": "allow",
                   "ctx7 docs *": "allow",
                   "cat *": "allow",
@@ -324,10 +315,6 @@
             "implement-task": {
               "model": "opencode-go/deepseek-v4.1-flash",
               "variant": "max",
-              "mode": "subagent"
-            },
-            "ui-design-task": {
-              "model": "opencode-go/glm-5.3-flash",
               "mode": "subagent"
             }
           },
@@ -616,20 +603,6 @@
       "releaseHash": "0b963b7c9587dd6773a34794961e2d8d0dde7280ebdf7dfbd5fafaa8aab444df"
     },
     {
-      "assetId": "authored-skill:ui-design",
-      "harness": "all",
-      "scope": "project",
-      "target": ".agents/skills/ui-design",
-      "releaseHash": "c31246b553961bf1a796449a1f6e854adc1e52bc127c6c81373290c82790060e"
-    },
-    {
-      "assetId": "authored-skill:ui-design-task",
-      "harness": "all",
-      "scope": "project",
-      "target": ".agents/skills/ui-design-task",
-      "releaseHash": "8dc5b25973ff2a2c0cbab3f98ae072bda27d1477d5bfbb71dff2dba5eb202cfd"
-    },
-    {
       "assetId": "authored-skill:verification-before-completion",
       "harness": "all",
       "scope": "project",
@@ -658,13 +631,6 @@
       "releaseHash": "bf1e75d96966edd298902d63348c828921b8b095d7306d0cdd56b4a591a7a82b"
     },
     {
-      "assetId": "third-party-skill:impeccable",
-      "harness": "all",
-      "scope": "project",
-      "target": ".agents/skills/impeccable",
-      "releaseHash": "e07098370ad7fd4605b67d305d8c06623a5c7d7737d2364e30932294ef880ff6"
-    },
-    {
       "assetId": "third-party-skill:writing-skills",
       "harness": "all",
       "scope": "project",
@@ -686,13 +652,6 @@
       "releaseHash": "0d7006b5c1d237b3fffabc3d45159ba3cd807b5dc02c4d70f8e485291aa7ca54"
     },
     {
-      "assetId": "opencode-subagent:ui-design-task",
-      "harness": "opencode",
-      "scope": "project",
-      "target": ".opencode/agents/ui-design-task.md",
-      "releaseHash": "5f2eeceb8935823d79dedb987ebc936ef4647e521a49b01ce1ecb1217162d6d4"
-    },
-    {
       "assetId": "claude-subagent:explore",
       "harness": "claude-code",
       "scope": "project",
@@ -707,25 +666,11 @@
       "releaseHash": "044d2b958f5e89f3990a28d3640cb683b96b1a95e740cd76c4d375c2c91d1f58"
     },
     {
-      "assetId": "claude-subagent:ui-design-task",
-      "harness": "claude-code",
-      "scope": "project",
-      "target": ".claude/agents/ui-design-task.md",
-      "releaseHash": "085efe0f7f4cd0d003c1a285f25ebe0461f103602f72d2504689d34fb76ce00c"
-    },
-    {
       "assetId": "codex-subagent:implement-task",
       "harness": "codex",
       "scope": "project",
       "target": ".codex/agents/implement-task.toml",
       "releaseHash": "a07da052809a01101ae60961fd96f50ede53f9241840ce5625836434e296a485"
-    },
-    {
-      "assetId": "codex-subagent:ui-design-task",
-      "harness": "codex",
-      "scope": "project",
-      "target": ".codex/agents/ui-design-task.toml",
-      "releaseHash": "def46d93ed3cc7f9d5d4800b49ef3f2c1c76fb33c051e77b16787a92d5baba45"
     },
     {
       "assetId": "opencode-subagent:explore",

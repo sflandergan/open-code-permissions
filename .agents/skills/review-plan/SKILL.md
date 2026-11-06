@@ -30,23 +30,6 @@ review-fix plan, the `plan.md` and linked `tasks/*.md` in the specific
 - Flag divergence between the spec/plan and the documented domain language or decisions named by `docs/agents/review-plan.md`.
   Recommend reconciliation and identify whether it is spec/design reconciliation (`/brainstorm`) or finishing documentation cleanup (`/finish`); do not edit glossaries or ADRs yourself.
 
-## UI-design preflight
-
-Apply this required-only preflight.
-
-1. Read the spec's `## UI Design` section and note the approved marker.
-2. For `ui-design: required`, verify before reviewing task decomposition that the final `plans/<feature-dir>/ui-design.md` exists.
-   The handoff contains the following sections: Approval, Scope, Source locations, State inventory, Scenario manifest, Responsive contract, Interaction contract, Accessibility contract, Simulated integrations, and Deferred production work.
-   Verify every referenced tracked source, test, fixture, and adapter exists and every stable preview scenario URL in the scenario manifest is reachable.
-3. For `ui-design: required`, verify the plan consumes the final handoff, creates `ui-integration.md`, checks the integrated UI, and records production-isolation evidence from the production build.
-   Reject a plan that creates or changes `ui-design.md` as an implementation task.
-4. For `ui-design: not-required`, the plan must not require or recommend
-   UI-design artifacts, preview scenarios, or ui-integration evidence.
-5. A missing or incomplete final handoff for `ui-design: required` is a
-   blocking plan ambiguity.
-6. An obvious classification contradiction — the marker and the spec content
-   disagree — is flagged but the marker is never rewritten during plan review.
-
 ## Workflow
 
 Use this standard review-plan workflow unless the user explicitly requests a different scope.

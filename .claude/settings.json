@@ -62,10 +62,7 @@
       "Bash(gh pr view:*)",
       "Bash(gh pr checks:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)",
-      "Bash(bash .agents/scripts/ui-design/preview.sh start)",
-      "Bash(bash .agents/scripts/ui-design/preview.sh probe)",
-      "Bash(bash .agents/scripts/ui-design/preview.sh stop)"
+      "Bash(gh run view:*)"
     ],
     "ask": [
       "Bash(git reset --hard:*)",

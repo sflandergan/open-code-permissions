@@ -75,48 +75,6 @@ interrogation. Two dimensions:
   session introduces new or fuzzy domain terms or makes a real, hard-to-reverse decision.
   Keep the glossary a glossary only — never a spec.
 
-## UI-design classification
-
-After grilling and before writing the final spec, classify whether the feature
-requires the UI-design workflow.
-
-The classification is one of:
-
-```text
-ui-design: required
-```
-
-```text
-ui-design: not-required
-```
-
-UI design is required when the feature adds or materially changes any of:
-
-- a new screen or user flow;
-- a material layout or information-hierarchy change;
-- a new or materially changed interaction;
-- a new user-visible state;
-- a meaningful responsive-behavior change; or
-- accessibility behavior that changes how a user interacts with the interface.
-
-UI design is normally not required when the feature is any of:
-
-- a copy correction that does not materially affect layout;
-- a mechanical refactor with unchanged observable output;
-- dependency or workflow maintenance;
-- backend-only work; or
-- a narrow visual defect whose intended result is already established.
-
-Mixed UI and non-UI features use `ui-design: required`.
-
-Propose the classification during the design discussion, before the spec is
-written. When the classification is ambiguous, ask the human which path to
-follow. Write exactly one marker in a `## UI Design` section in the final
-approved specification.
-
-Do not use repository technology names when stating the criteria — keep the
-classification portable across codebases.
-
 ## Stop conditions
 
 - After the spec is approved, commit the spec artifact if it changed, use the
