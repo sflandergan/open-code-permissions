@@ -17,7 +17,7 @@ This repository provides TypeScript tooling for managing OpenCode permissions: a
 - Write all code in TypeScript with `strict` enabled.
 - Bun is the runtime, package manager, and test runner: `bun install`, `bun run <script>`, `bun test`.
 - Skill scripts are `.ts` files that shell wrappers start with `bun <script>.ts`.
-- Throwaway work goes in `.temp/` at the repository root (gitignored); clean up after use.
+- Throwaway work goes in `/tmp/opencode-permissions/`; clean up after use.
 
 ## Git Conventions
 
@@ -41,11 +41,3 @@ Issues live in GitHub at `sflandergan/open-code-permissions`. Read them with `gh
 
 - Do not delete branches or remove worktrees.
 - Use the `git-publish` skill for branch publication instead of invoking `git push` directly.
-
-## Extending the Toolkit
-
-To add a new stack overlay (e.g. Gradle, Go, Cargo):
-
-1. Create `stacks/<name>/` with `AGENTS.md`, `opencode.json`, `claude/settings.json`, and `docs/agents/<role>.md` additions for the affected roles.
-2. Update `scripts/init.sh` and `scripts/copy.sh` to include the new stack in their stack selection prompt.
-3. Document the stack in the top-level `README.md`.
