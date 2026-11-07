@@ -3,6 +3,8 @@ name: implement
 description: Use when executing an approved plan task-by-task — dispatch implement-task workers, own task acceptance, and verify before any completion claim.
 argument-hint: [path to plan.md]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 # Implement

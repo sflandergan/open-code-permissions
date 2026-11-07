@@ -2,6 +2,8 @@
 name: grill-with-docs
 description: Use when a design, plan, spec, or business idea must be stress-tested against the authoritative docs the calling workflow's role doc names — sharpens terminology and, when allowed, updates glossaries and decision records inline.
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 Run a `/grilling` session about the artifact at hand.

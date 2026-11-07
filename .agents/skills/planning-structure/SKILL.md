@@ -2,6 +2,8 @@
 name: planning-structure
 description: Use when writing or validating implementation or review-fix plan artifacts — directory layout, file names, index-to-task links, numbering, and slug rules.
 user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Planning Structure

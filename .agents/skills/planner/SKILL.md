@@ -3,6 +3,8 @@ name: planner
 description: Use when turning an approved spec or clear requirements into a reviewable plan (index plus task files) with TDD steps — resolves every fork during planning and ships zero open questions.
 argument-hint: [path to spec or requirements]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 # Writing Plans

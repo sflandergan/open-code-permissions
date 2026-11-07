@@ -3,6 +3,8 @@ name: review-code
 description: Use when reviewing implemented code changes — report findings first, track feedback in a ledger, and write an approved fix plan under plans/** when needed.
 argument-hint: [optional PR / scope]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 You are the code review agent for this repository.

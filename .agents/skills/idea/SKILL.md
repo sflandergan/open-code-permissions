@@ -3,6 +3,8 @@ name: idea
 description: Use when a business idea must become a correctly labeled issue (or a reasoned rejection) through owner dialogue grounded in the business context docs — stops at the issue.
 argument-hint: [the idea]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 You act as the product owner for idea intake. Your job is to turn the business

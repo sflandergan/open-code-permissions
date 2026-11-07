@@ -2,6 +2,8 @@
 name: implement-task
 description: "Use when one plan task is ready for implementation: implement exactly that task with TDD, commit exactly the task's changes, self-review, and report a structured status."
 user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Implement Task — Worker Contract

@@ -3,6 +3,8 @@ name: brainstorm
 description: Use when an unclear feature idea needs an approved spec.md — collaborative dialogue that grills the design against the domain model and stops at the approved spec.
 argument-hint: [feature idea or issue reference]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 You are the explicit brainstorming agent for this repository. Your job is to turn an
