@@ -4,7 +4,7 @@ This file is the minimal entry point for AI agents working in this repository. K
 
 ## Project Context
 
-This repository provides TypeScript tooling for managing OpenCode permissions: agent skills that inspect and edit permission policy, and an OpenCode plugin that records permission observations. Maintainers and agents use it to keep OpenCode permission rules reviewed and minimal. Skills live under `.agents/skills/`; OpenCode plugins and agents live under `.opencode/`.
+This repository provides TypeScript tooling for managing OpenCode permissions: agent skills that inspect and edit permission policy, and an OpenCode plugin that records permission observations. Maintainers and agents use it to keep OpenCode permission rules reviewed and minimal. Published skills live under `skills/`, toolkit skills under `.agents/skills/`; OpenCode plugins and agents live under `.opencode/`.
 
 ## Always Follow
 
@@ -18,6 +18,7 @@ This repository provides TypeScript tooling for managing OpenCode permissions: a
 - Bun is the runtime, package manager, and test runner: `bun install`, `bun run <script>`, `bun test`.
 - Skill scripts are `.ts` files that shell wrappers start with `bun <script>.ts`.
 - Throwaway work goes in `/tmp/opencode-permissions/`; clean up after use.
+- When upgrading the agentic coding toolkit, follow `docs/TOOLKIT-UPGRADE.md` (choose replace, rerun `bun run mark-internal-skills`, then `bun test`).
 
 ## Git Conventions
 
