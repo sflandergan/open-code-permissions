@@ -1,0 +1,79 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "*": "ask"
+    },
+    "edit": {
+      "*": "deny"
+    },
+    "read": {
+      "*": "allow"
+    },
+    "skill": {
+      "legacy-skill": "deny",
+      "opencode-permission-optimizer": "deny"
+    },
+    "webfetch": "ask"
+  },
+  "agent": {
+    "plan": {
+      "disable": true,
+      "options": {},
+      "permission": {}
+    },
+    "build": {
+      "disable": true,
+      "options": {},
+      "permission": {}
+    },
+    "explore": {
+      "model": "openai/gpt-5.6-sol",
+      "options": {},
+      "permission": {}
+    },
+    "ghost": {
+      "hidden": true,
+      "description": "hidden fixture agent",
+      "permission": {
+        "read": {
+          "opencode.json": "allow",
+          "*": "deny",
+          ".opencode/agents/*.md": "allow",
+          ".agents/skills/opencode-permission-optimizer/**": "allow"
+        },
+        "edit": {
+          "*": "deny"
+        },
+        "write": {
+          "*": "deny"
+        },
+        "question": "allow",
+        "task": {
+          "*": "deny"
+        },
+        "skill": {
+          "*": "deny",
+          "legacy-skill": "allow",
+          "opencode-permission-optimizer": "allow"
+        },
+        "bash": {
+          "*": "deny",
+          "*>*": "deny",
+          "*<*": "deny",
+          "bash \"*/opencode-permission-optimizer/scripts/summarize.sh\" --agent *": "allow",
+          "ls": "allow",
+          "echo *": "allow"
+        }
+      },
+      "options": {},
+      "name": "ghost",
+      "mode": "all",
+      "prompt": "# ghost"
+    }
+  },
+  "mode": {},
+  "plugin": [],
+  "command": {},
+  "username": "sflandergan"
+}

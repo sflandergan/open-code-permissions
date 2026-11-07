@@ -1,0 +1,703 @@
+compaction (primary)
+  [
+  {
+    "permission": "*",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "doom_loop",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+    "action": "allow"
+  },
+  {
+    "permission": "question",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_enter",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_exit",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.*",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.example",
+    "action": "allow"
+  },
+  {
+    "permission": "*",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "skill",
+    "pattern": "legacy-skill",
+    "action": "deny"
+  },
+  {
+    "permission": "webfetch",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  }
+]
+explore (subagent)
+  [
+  {
+    "permission": "*",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "doom_loop",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+    "action": "allow"
+  },
+  {
+    "permission": "question",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_enter",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_exit",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.*",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.example",
+    "action": "allow"
+  },
+  {
+    "permission": "*",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "grep",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "glob",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "list",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "bash",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "webfetch",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "websearch",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+    "action": "allow"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "skill",
+    "pattern": "legacy-skill",
+    "action": "deny"
+  },
+  {
+    "permission": "webfetch",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  }
+]
+general (subagent)
+  [
+  {
+    "permission": "*",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "doom_loop",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+    "action": "allow"
+  },
+  {
+    "permission": "question",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_enter",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_exit",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.*",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.example",
+    "action": "allow"
+  },
+  {
+    "permission": "todowrite",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "skill",
+    "pattern": "legacy-skill",
+    "action": "deny"
+  },
+  {
+    "permission": "webfetch",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  }
+]
+summary (primary)
+  [
+  {
+    "permission": "*",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "doom_loop",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+    "action": "allow"
+  },
+  {
+    "permission": "question",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_enter",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_exit",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.*",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.example",
+    "action": "allow"
+  },
+  {
+    "permission": "*",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "skill",
+    "pattern": "legacy-skill",
+    "action": "deny"
+  },
+  {
+    "permission": "webfetch",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  }
+]
+title (primary)
+  [
+  {
+    "permission": "*",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "doom_loop",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+    "action": "allow"
+  },
+  {
+    "permission": "question",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_enter",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_exit",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.*",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.example",
+    "action": "allow"
+  },
+  {
+    "permission": "*",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "skill",
+    "pattern": "legacy-skill",
+    "action": "deny"
+  },
+  {
+    "permission": "webfetch",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  }
+]
+ghost (all)
+  [
+  {
+    "permission": "*",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "doom_loop",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+    "action": "allow"
+  },
+  {
+    "permission": "question",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_enter",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "plan_exit",
+    "action": "deny",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.*",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*.env.example",
+    "action": "allow"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "skill",
+    "pattern": "legacy-skill",
+    "action": "deny"
+  },
+  {
+    "permission": "webfetch",
+    "action": "ask",
+    "pattern": "*"
+  },
+  {
+    "permission": "read",
+    "pattern": "opencode.json",
+    "action": "allow"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "read",
+    "pattern": ".opencode/agents/*.md",
+    "action": "allow"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "write",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "question",
+    "action": "allow",
+    "pattern": "*"
+  },
+  {
+    "permission": "task",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "skill",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "skill",
+    "pattern": "legacy-skill",
+    "action": "allow"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "deny"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*>*",
+    "action": "deny"
+  },
+  {
+    "permission": "bash",
+    "pattern": "*<*",
+    "action": "deny"
+  },
+  {
+    "permission": "bash",
+    "pattern": "ls",
+    "action": "allow"
+  },
+  {
+    "permission": "bash",
+    "pattern": "echo *",
+    "action": "allow"
+  },
+  {
+    "permission": "external_directory",
+    "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+    "action": "allow"
+  }
+]

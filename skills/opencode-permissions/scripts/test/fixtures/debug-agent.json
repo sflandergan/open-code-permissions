@@ -1,0 +1,206 @@
+{
+  "name": "ghost",
+  "mode": "all",
+  "permission": [
+    {
+      "permission": "*",
+      "action": "allow",
+      "pattern": "*"
+    },
+    {
+      "permission": "doom_loop",
+      "action": "ask",
+      "pattern": "*"
+    },
+    {
+      "permission": "external_directory",
+      "pattern": "*",
+      "action": "ask"
+    },
+    {
+      "permission": "external_directory",
+      "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+      "action": "allow"
+    },
+    {
+      "permission": "external_directory",
+      "pattern": "/var/folders/d9/r611b1g156zgrh23nhsyhpnh0000gn/T/opencode/*",
+      "action": "allow"
+    },
+    {
+      "permission": "question",
+      "action": "deny",
+      "pattern": "*"
+    },
+    {
+      "permission": "plan_enter",
+      "action": "deny",
+      "pattern": "*"
+    },
+    {
+      "permission": "plan_exit",
+      "action": "deny",
+      "pattern": "*"
+    },
+    {
+      "permission": "read",
+      "pattern": "*",
+      "action": "allow"
+    },
+    {
+      "permission": "read",
+      "pattern": "*.env",
+      "action": "ask"
+    },
+    {
+      "permission": "read",
+      "pattern": "*.env.*",
+      "action": "ask"
+    },
+    {
+      "permission": "read",
+      "pattern": "*.env.example",
+      "action": "allow"
+    },
+    {
+      "permission": "bash",
+      "pattern": "*",
+      "action": "ask"
+    },
+    {
+      "permission": "edit",
+      "pattern": "*",
+      "action": "deny"
+    },
+    {
+      "permission": "read",
+      "pattern": "*",
+      "action": "allow"
+    },
+    {
+      "permission": "skill",
+      "pattern": "legacy-skill",
+      "action": "deny"
+    },
+    {
+      "permission": "skill",
+      "pattern": "opencode-permission-optimizer",
+      "action": "deny"
+    },
+    {
+      "permission": "webfetch",
+      "action": "ask",
+      "pattern": "*"
+    },
+    {
+      "permission": "read",
+      "pattern": "opencode.json",
+      "action": "allow"
+    },
+    {
+      "permission": "read",
+      "pattern": "*",
+      "action": "deny"
+    },
+    {
+      "permission": "read",
+      "pattern": ".opencode/agents/*.md",
+      "action": "allow"
+    },
+    {
+      "permission": "read",
+      "pattern": ".agents/skills/opencode-permission-optimizer/**",
+      "action": "allow"
+    },
+    {
+      "permission": "edit",
+      "pattern": "*",
+      "action": "deny"
+    },
+    {
+      "permission": "write",
+      "pattern": "*",
+      "action": "deny"
+    },
+    {
+      "permission": "question",
+      "action": "allow",
+      "pattern": "*"
+    },
+    {
+      "permission": "task",
+      "pattern": "*",
+      "action": "deny"
+    },
+    {
+      "permission": "skill",
+      "pattern": "*",
+      "action": "deny"
+    },
+    {
+      "permission": "skill",
+      "pattern": "legacy-skill",
+      "action": "allow"
+    },
+    {
+      "permission": "skill",
+      "pattern": "opencode-permission-optimizer",
+      "action": "allow"
+    },
+    {
+      "permission": "bash",
+      "pattern": "*",
+      "action": "deny"
+    },
+    {
+      "permission": "bash",
+      "pattern": "*>*",
+      "action": "deny"
+    },
+    {
+      "permission": "bash",
+      "pattern": "*<*",
+      "action": "deny"
+    },
+    {
+      "permission": "bash",
+      "pattern": "bash \"*/opencode-permission-optimizer/scripts/summarize.sh\" --agent *",
+      "action": "allow"
+    },
+    {
+      "permission": "bash",
+      "pattern": "ls",
+      "action": "allow"
+    },
+    {
+      "permission": "bash",
+      "pattern": "echo *",
+      "action": "allow"
+    },
+    {
+      "permission": "external_directory",
+      "pattern": "/tmp/example-home/.local/share/opencode/tool-output/*",
+      "action": "allow"
+    }
+  ],
+  "options": {},
+  "native": false,
+  "prompt": "# ghost",
+  "description": "hidden fixture agent",
+  "hidden": true,
+  "tools": {
+    "invalid": true,
+    "question": true,
+    "bash": true,
+    "read": true,
+    "glob": true,
+    "grep": true,
+    "edit": false,
+    "write": false,
+    "task": false,
+    "webfetch": true,
+    "todowrite": true,
+    "websearch": true,
+    "skill": true
+  }
+}
