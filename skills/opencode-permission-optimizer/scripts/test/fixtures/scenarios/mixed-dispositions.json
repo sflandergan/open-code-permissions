@@ -1,0 +1,87 @@
+{
+  "description": "Mixed dispositions — one eligible ask, one already-allowed, one explicit-deny, one insufficient-evidence, and one unchanged family",
+  "compact": {
+    "reportVersion": 1,
+    "analysis": {
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": "2026-08-04T09:00:00.000Z", "effective": "2026-08-04T09:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 11, "retainedRequests": 11, "retainedExactInputKeys": 5, "changedExactInputKeys": 4, "actionableFamilies": 1 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "askCoverage": [],
+    "actionableFamilies": [
+      {
+        "permission": "bash",
+        "family": "rm",
+        "evidence": { "requests": 4, "qualifyingApprovals": 4, "distinctSessions": 4, "firstActivity": "2026-07-10T08:00:00.000Z", "lastActivity": "2026-08-05T10:00:00.000Z" },
+        "askInputs": [
+          {
+            "input": "rm generated-file",
+            "coverage": "implicit-ask",
+            "requests": 3,
+            "qualifyingApprovals": 3,
+            "distinctSessions": 3,
+            "firstActivity": "2026-07-10T08:00:00.000Z",
+            "lastActivity": "2026-08-05T10:00:00.000Z"
+          }
+        ],
+        "denyBoundaries": [
+          { "position": 3, "permission": "bash", "pattern": "rm -rf *", "action": "deny", "deniedInputCount": 1, "origin": { "scope": "shared", "source": "opencode.json" }, "overrides": [] }
+        ]
+      }
+    ],
+    "nonActionable": { "alreadyAllowedInputs": 1, "explicitlyDeniedInputs": 1, "insufficientEvidenceFamilies": 1, "unchangedFamilies": 1 }
+  },
+  "verbose": {
+    "reportVersion": 1,
+    "analysis": {
+      "databaseState": "available", "schemaVersion": 2,
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": "2026-08-04T09:00:00.000Z", "effective": "2026-08-04T09:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 11, "retainedRequests": 11, "retainedExactInputKeys": 5, "changedExactInputKeys": 4, "reportedFamilies": 3, "skippedFamilies": 1 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "candidates": [
+      {
+        "permission": "bash", "changed": true, "eligible": true, "family": "rm",
+        "evidence": { "requests": 4, "qualifyingApprovals": 4, "qualifyingSessionIds": ["s1", "s2", "s3", "s4"], "qualifyingSessionCount": 4, "firstActivity": "2026-07-10T08:00:00.000Z", "lastActivity": "2026-08-05T10:00:00.000Z" },
+        "inputs": [
+          { "input": "rm generated-file", "changed": true, "evidence": { "requests": 3, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-10T08:00:00.000Z", "lastActivity": "2026-08-05T10:00:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 0, "unresolved": 0, "observationIds": [18, 9, 4] }, "coverage": { "action": "ask", "reason": "implicit-ask", "rule": null }, "disposition": "eligible" },
+          { "input": "rm -rf /tmp/test", "changed": true, "evidence": { "requests": 1, "qualifyingApprovals": 0, "qualifyingSessionIds": [], "qualifyingSessionCount": 0, "firstActivity": "2026-08-04T12:00:00.000Z", "lastActivity": "2026-08-04T12:00:00.000Z", "directRejections": 1, "directRejectionTimestamps": ["2026-08-04T12:05:00.000Z"], "derived": 0, "unresolved": 0, "observationIds": [21] }, "coverage": { "action": "deny", "reason": "explicit-rule", "rule": { "position": 3, "origin": { "scope": "shared", "source": "opencode.json" }, "overrides": [] } }, "disposition": "explicit-deny" }
+        ]
+      },
+      {
+        "permission": "read", "changed": true, "eligible": false, "family": "read",
+        "evidence": { "requests": 3, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-14T09:00:00.000Z", "lastActivity": "2026-08-05T09:30:00.000Z" },
+        "inputs": [
+          { "input": "src/types.ts", "changed": true, "evidence": { "requests": 3, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-14T09:00:00.000Z", "lastActivity": "2026-08-05T09:30:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 0, "unresolved": 0, "observationIds": [17, 10, 5] }, "coverage": { "action": "allow", "reason": "explicit-rule", "rule": { "position": 8, "origin": { "scope": "shared", "source": "opencode.json" }, "overrides": [] } }, "disposition": "already-allowed" }
+        ]
+      },
+      {
+        "permission": "webfetch", "changed": true, "eligible": false, "family": "webfetch",
+        "evidence": { "requests": 2, "qualifyingApprovals": 2, "qualifyingSessionIds": ["s1", "s2"], "qualifyingSessionCount": 2, "firstActivity": "2026-08-04T14:00:00.000Z", "lastActivity": "2026-08-05T08:00:00.000Z" },
+        "inputs": [
+          { "input": "https://example.com", "changed": true, "evidence": { "requests": 2, "qualifyingApprovals": 2, "qualifyingSessionIds": ["s1", "s2"], "qualifyingSessionCount": 2, "firstActivity": "2026-08-04T14:00:00.000Z", "lastActivity": "2026-08-05T08:00:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 0, "unresolved": 0, "observationIds": [20, 19] }, "coverage": { "action": "ask", "reason": "implicit-ask", "rule": null }, "disposition": "insufficient-evidence" }
+        ]
+      }
+    ],
+    "skipped": [{ "permission": "edit", "reason": "no activity after 2026-08-04T09:00:00.000Z" }],
+    "eligible": [{ "permission": "bash", "inputs": ["rm generated-file"] }]
+  },
+  "expected": {
+    "dispositions": {
+      "rm generated-file": "eligible — capability advice",
+      "rm -rf /tmp/test": "explicit-deny — recorded as a policy boundary, no override proposal",
+      "src/types.ts": "already-allowed — matched shared read rule at position 8, no new rule",
+      "https://example.com": "insufficient-evidence — 2 approvals across 2 sessions, below the three-approval minimum",
+      "edit family": "skipped — no activity after the stored cutoff"
+    },
+    "notes": ["Every disposition is recorded separately; the deny and skip never stop the eligible family from receiving advice."]
+  }
+}

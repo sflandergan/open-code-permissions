@@ -1,0 +1,169 @@
+{
+  "description": "Redirects — complete redirected command observed three times, matched by the shared redirect guard",
+  "compact": {
+    "reportVersion": 1,
+    "analysis": {
+      "repository": {
+        "identity": "github.com/example/portfolio-app",
+        "identitySource": "origin",
+        "worktree": "/worktrees/portfolio-app"
+      },
+      "agent": "implement",
+      "retainedInterval": {
+        "from": "2026-07-06T12:00:00.000Z",
+        "to": "2026-08-05T12:00:00.000Z"
+      },
+      "selectionCutoff": {
+        "stored": null,
+        "effective": "2026-07-06T12:00:00.000Z"
+      },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": {
+        "retainedObservations": 3,
+        "retainedRequests": 3,
+        "retainedExactInputKeys": 1,
+        "changedExactInputKeys": 1,
+        "actionableFamilies": 1
+      }
+    },
+    "policyReport": {
+      "agent": { "name": "implement", "mode": "subagent", "status": "custom" },
+      "inspector": {
+        "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"],
+        "invocations": 1
+      }
+    },
+    "askCoverage": [
+      {
+        "id": "ask-rule-0",
+        "permission": "bash",
+        "pattern": "*>*",
+        "action": "ask",
+        "position": 2,
+        "origin": { "scope": "shared", "source": "opencode.json" },
+        "overrides": []
+      }
+    ],
+    "actionableFamilies": [
+      {
+        "permission": "bash",
+        "family": "cat",
+        "evidence": {
+          "requests": 3,
+          "qualifyingApprovals": 3,
+          "distinctSessions": 3,
+          "firstActivity": "2026-07-22T08:00:00.000Z",
+          "lastActivity": "2026-07-30T11:45:00.000Z"
+        },
+        "askInputs": [
+          {
+            "input": "cat file.txt > /tmp/out",
+            "coverage": "ask-rule-0",
+            "requests": 3,
+            "qualifyingApprovals": 3,
+            "distinctSessions": 3,
+            "firstActivity": "2026-07-22T08:00:00.000Z",
+            "lastActivity": "2026-07-30T11:45:00.000Z"
+          }
+        ],
+        "denyBoundaries": []
+      }
+    ],
+    "nonActionable": {
+      "alreadyAllowedInputs": 0,
+      "explicitlyDeniedInputs": 0,
+      "insufficientEvidenceFamilies": 0,
+      "unchangedFamilies": 0
+    }
+  },
+  "verbose": {
+    "reportVersion": 1,
+    "analysis": {
+      "databaseState": "available",
+      "schemaVersion": 2,
+      "repository": {
+        "identity": "github.com/example/portfolio-app",
+        "identitySource": "origin",
+        "worktree": "/worktrees/portfolio-app"
+      },
+      "agent": "implement",
+      "retainedInterval": {
+        "from": "2026-07-06T12:00:00.000Z",
+        "to": "2026-08-05T12:00:00.000Z"
+      },
+      "selectionCutoff": {
+        "stored": null,
+        "effective": "2026-07-06T12:00:00.000Z"
+      },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": {
+        "retainedObservations": 3,
+        "retainedRequests": 3,
+        "retainedExactInputKeys": 1,
+        "changedExactInputKeys": 1,
+        "reportedFamilies": 1,
+        "skippedFamilies": 0
+      }
+    },
+    "policyReport": {
+      "agent": { "name": "implement", "mode": "subagent", "status": "custom" },
+      "inspector": {
+        "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"],
+        "invocations": 1
+      }
+    },
+    "candidates": [
+      {
+        "permission": "bash",
+        "changed": true,
+        "eligible": true,
+        "family": "cat",
+        "evidence": {
+          "requests": 3,
+          "qualifyingApprovals": 3,
+          "qualifyingSessionIds": ["s1", "s2", "s3"],
+          "qualifyingSessionCount": 3,
+          "firstActivity": "2026-07-22T08:00:00.000Z",
+          "lastActivity": "2026-07-30T11:45:00.000Z"
+        },
+        "inputs": [
+          {
+            "input": "cat file.txt > /tmp/out",
+            "changed": true,
+            "evidence": {
+              "requests": 3,
+              "qualifyingApprovals": 3,
+              "qualifyingSessionIds": ["s1", "s2", "s3"],
+              "qualifyingSessionCount": 3,
+              "firstActivity": "2026-07-22T08:00:00.000Z",
+              "lastActivity": "2026-07-30T11:45:00.000Z",
+              "directRejections": 0,
+              "directRejectionTimestamps": [],
+              "derived": 0,
+              "unresolved": 0,
+              "observationIds": [14, 11, 8]
+            },
+            "coverage": {
+              "action": "ask",
+              "reason": "explicit-rule",
+              "rule": {
+                "position": 2,
+                "origin": { "scope": "shared", "source": "opencode.json" },
+                "overrides": []
+              }
+            },
+            "disposition": "eligible"
+          }
+        ]
+      }
+    ],
+    "skipped": [],
+    "eligible": [{ "permission": "bash", "inputs": ["cat file.txt > /tmp/out"] }]
+  },
+  "expected": {
+    "capability": "copy one workspace file into a fixed output path",
+    "recommendation": { "permission": "bash", "pattern": "cat file.txt > /tmp/out", "action": "allow" },
+    "rejectedAlternatives": ["cat *", "cat * > *"],
+    "notes": ["The redirect makes the input write-capable; only the complete evidenced command is proposed, placed after the shared redirect guard so the guard keeps catching other redirects.", "cat * would admit arbitrary redirect targets."]
+  }
+}

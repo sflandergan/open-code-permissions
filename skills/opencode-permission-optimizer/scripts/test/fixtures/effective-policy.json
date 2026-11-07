@@ -1,0 +1,98 @@
+{
+  "agents": [
+    {
+      "name": "implement",
+      "mode": "subagent",
+      "status": "custom",
+      "rules": [
+        {
+          "permission": "*",
+          "pattern": "*",
+          "action": "ask",
+          "position": 0,
+          "origin": { "scope": "shared", "source": "opencode.json" },
+          "overrides": []
+        },
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask",
+          "position": 1,
+          "origin": { "scope": "shared", "source": "opencode.json" },
+          "overrides": []
+        },
+        {
+          "permission": "bash",
+          "pattern": "*>*",
+          "action": "ask",
+          "position": 2,
+          "origin": { "scope": "shared", "source": "opencode.json" },
+          "overrides": []
+        },
+        {
+          "permission": "bash",
+          "pattern": "rm -rf *",
+          "action": "deny",
+          "position": 3,
+          "origin": { "scope": "shared", "source": "opencode.json" },
+          "overrides": []
+        },
+        {
+          "permission": "bash",
+          "pattern": "git status",
+          "action": "allow",
+          "position": 4,
+          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" },
+          "overrides": []
+        },
+        {
+          "permission": "bash",
+          "pattern": "git status *",
+          "action": "allow",
+          "position": 5,
+          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" },
+          "overrides": [{ "scope": "shared", "source": "opencode.json" }]
+        },
+        {
+          "permission": "bash",
+          "pattern": "git diff *",
+          "action": "allow",
+          "position": 6,
+          "origin": { "scope": "external", "source": null },
+          "overrides": []
+        },
+        {
+          "permission": "edit",
+          "pattern": "*",
+          "action": "allow",
+          "position": 7,
+          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" },
+          "overrides": []
+        },
+        {
+          "permission": "read",
+          "pattern": "*",
+          "action": "allow",
+          "position": 8,
+          "origin": { "scope": "shared", "source": "opencode.json" },
+          "overrides": []
+        }
+      ]
+    },
+    {
+      "name": "explore",
+      "mode": "subagent",
+      "status": null,
+      "rules": [
+        {
+          "permission": "*",
+          "pattern": "*",
+          "action": "ask",
+          "position": 0,
+          "origin": { "scope": "external", "source": null },
+          "overrides": []
+        }
+      ]
+    }
+  ]
+}
