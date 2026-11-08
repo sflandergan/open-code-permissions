@@ -9,12 +9,12 @@
 - Create: `docs/agents/opencode-permission-optimizer.md`
 
 **Interfaces:**
-- Consumes: the two published skills (Tasks 04, 08); `docs/agents/agent-workflow-extension.md` (existing).
+- Consumes: the two published skills (Tasks 04, 08).
 - Produces: no code API. Both files are Markdown consumed by OpenCode/agents at runtime.
 
 These are Markdown docs/config files. Per `AGENTS.md`, docs-only changes need no workspace verification. The content below is complete.
 
-- [ ] **Step 1: Create the agent file**
+- [x] **Step 1: Create the agent file**
 
 Create `.opencode/agents/opencode-permissions.md` with this exact content:
 
@@ -49,8 +49,8 @@ permission:
     "opencode.json": allow
     "opencode.jsonc": allow
     ".opencode/agents/*.md": allow
-    ".agents/skills/opencode-permissions/**": allow
-    ".agents/skills/opencode-permission-optimizer/**": allow
+    "skills/opencode-permissions/**": allow
+    "skills/opencode-permission-optimizer/**": allow
     ".agents/skills/**": allow
     "docs/agents/**": allow
     "AGENTS.md": allow
@@ -63,10 +63,10 @@ permission:
     "bash \"*/opencode-permissions/scripts/inspect.sh\" show-effective*": allow
     "bash \"*/opencode-permission-optimizer/scripts/summarize.sh\" --agent *": allow
     "bash \"*/opencode-permission-optimizer/scripts/list-agents.sh\"*": allow
-    "bash .agents/skills/opencode-permissions/scripts/inspect.sh list-agents*": allow
-    "bash .agents/skills/opencode-permissions/scripts/inspect.sh show-effective*": allow
-    "bash .agents/skills/opencode-permission-optimizer/scripts/list-agents.sh*": allow
-    "bash .agents/skills/opencode-permission-optimizer/scripts/summarize.sh --agent *": allow
+    "bash skills/opencode-permissions/scripts/inspect.sh list-agents*": allow
+    "bash skills/opencode-permissions/scripts/inspect.sh show-effective*": allow
+    "bash skills/opencode-permission-optimizer/scripts/list-agents.sh*": allow
+    "bash skills/opencode-permission-optimizer/scripts/summarize.sh --agent *": allow
     "rm -- .temp/permission-inspect-output-*": allow
     "rm -- .temp/permission-optimizer-output-*": allow
     "git diff *": allow
@@ -89,7 +89,7 @@ Invoke `/opencode-permissions` for all other permission-policy requests.
 
 Tidy rules applied to the bikes-local source (`.opencode/agents/opencode-permissions.md`): self-protection is kept (`edit`/`write` deny the agent's own definition and `AGENTS.md` edits resolve to `ask`); the confirmed-edit model is kept (the body delegates to the two skills, which require exact-diff confirmation). Duplicated rules are removed — the glob-absolute and repo-local invocation forms are each kept once per command, the redundant `2>/dev/null` variants are dropped, and the near-identical `list-agents`/`list-agents --json` and `show-effective`/`show-effective *` pairs collapse to single `list-agents*` and `show-effective*` patterns. Every reference to the non-existent `opencode-permissions.sh` script is removed. All temporary-report paths use `.temp/`. The agent is a copy-in file: having the plugin register it through a `config` hook was rejected because it would hide a policy-editing agent's permissions from the consumer's own review.
 
-- [ ] **Step 2: Create the role doc**
+- [x] **Step 2: Create the role doc**
 
 Create `docs/agents/opencode-permission-optimizer.md` with this exact content:
 
@@ -98,8 +98,7 @@ Create `docs/agents/opencode-permission-optimizer.md` with this exact content:
 
 ## Load
 
-- For the selected custom agent: `.opencode/agents/<name>.md`, every skill it references and each referenced skill's definition, `docs/agents/<name>.md` when present, and every applicable `AGENTS.md` (repository root and nested).
-- `docs/agents/agent-workflow-extension.md` only when changing workflow, agent, skill, or permission wiring.
+- For the selected custom agent: `.opencode/agents/<name>.md`, every skill it references with its `SKILL.md`, every file each `SKILL.md` references, and every applicable `AGENTS.md` (repository root and nested).
 - Record the sources found and any required source that is missing; stop recommendations for new authority when required role guidance is missing.
 
 ## Policy sources
@@ -112,12 +111,12 @@ Create `docs/agents/opencode-permission-optimizer.md` with this exact content:
 
 The bikes-local role doc's "Current repository policy values" and "Native-role overrides" sections are dropped: the inspector reports effective policy and copied values would go stale, and the sister repository's provider config / Mistral compatibility plugin / policy values are non-goals.
 
-- [ ] **Step 3: Verify (docs-only)**
+- [x] **Step 3: Verify (docs-only)**
 
 Run: `git diff --check`
 Expected: exit 0 (no whitespace errors). No build, typecheck or test run is required for Markdown-only changes.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .opencode/agents/opencode-permissions.md docs/agents/opencode-permission-optimizer.md

@@ -12,43 +12,46 @@
 
 This is a verification-only task. Per the plan's Completion rules, do **not** create an empty commit when no owned files changed; report the verification results instead.
 
-- [ ] **Step 1: Install from the frozen lockfile**
+- [x] **Step 1: Install from the frozen lockfile**
 
 Run: `bun install --frozen-lockfile`
 Expected: exits 0 with no changes to `bun.lock`.
 
-- [ ] **Step 2: Typecheck the whole repository**
+- [x] **Step 2: Typecheck the whole repository**
 
 Run: `bun run typecheck`
 Expected: exit 0 (`tsc --noEmit`, `strict`, covering the plugin, both skills, root scripts and tests).
 
-- [ ] **Step 3: Run the full test suite**
+- [x] **Step 3: Run the full test suite**
 
-Run: `bun test ./.opencode ./.agents ./scripts ./test`
-Expected: PASS — every ported plugin test, both skill suites, the entry test, the contract test, the boundary test, the internal-skills guard and the check-package unit tests. The `./`-prefixed roots are required so Bun scans the hidden `.opencode/` and `.agents/` directories.
+Run: `bun test ./.opencode ./skills ./scripts ./test`
+Expected: PASS — every ported plugin test, both skill suites, the entry test, the contract test, the cross-area import test, the internal-skills guard and the check-package unit tests. The `./`-prefixed roots are required so Bun scans the hidden `.opencode/` directory.
 
-- [ ] **Step 4: Assert the package contents**
+- [x] **Step 4: Assert the package contents**
 
 Run: `bun run check-package`
 Expected: PASS — prints `package contents: ok`.
 
 Run: `npm pack --dry-run --json`
-Expected: the `[0].files[].path` list includes `.opencode/plugins/permission-optimizer.ts`, `.opencode/plugins/permission-optimizer/schema.sql`, both `migrations/*.sql` files, `README.md` and `LICENSE`; it excludes every `.agents/`, `.claude/`, `plans/`, `test/` and `fixtures/` path. This is the concrete evidence behind the pure assertion.
+Expected: the `[0].files[].path` list includes `.opencode/plugins/permission-optimizer.ts`, `.opencode/plugins/permission-optimizer/schema.sql`, both `migrations/*.sql` files, `README.md` and `LICENSE`; every other path is `package.json` or a `.ts`, `.sql` or `.md` file in the plugin directory outside its `test/` directories, so no `skills/`, `.agents/`, `.claude/`, `plans/`, `test/` or `fixtures/` path appears. This is the concrete evidence behind the pure assertion.
 
-- [ ] **Step 5: Confirm the internal-skills guard**
+- [x] **Step 5: Confirm the internal-skills guard**
 
 Run: `bun run mark-internal-skills --check`
 Expected: exit 0 with no output.
 
 Run: `grep -L "internal: true" .agents/skills/*/SKILL.md`
-Expected: exactly the two published skills — `opencode-permissions` and `opencode-permission-optimizer`.
+Expected: no output (every toolkit skill is internal).
 
-- [ ] **Step 6: Confirm a clean working tree**
+Run: `grep -l "internal: true" skills/*/SKILL.md`
+Expected: no output (neither published skill, `opencode-permissions` or `opencode-permission-optimizer`, is internal).
+
+- [x] **Step 6: Confirm a clean working tree**
 
 Run: `git status --short`
 Expected: empty (all changes committed by Tasks 01–13). If anything is uncommitted, stop and report it; do not amend another task's commit.
 
-- [ ] **Step 7: Consolidate the changed-code audit evidence**
+- [x] **Step 7: Consolidate the changed-code audit evidence**
 
 Collect the two `docs/CODING_GUIDELINES.md` tables produced by every TypeScript-changing task (02, 03, 04, 05, 06, 07, 08, 09, 10, 11):
 
@@ -57,6 +60,6 @@ Collect the two `docs/CODING_GUIDELINES.md` tables produced by every TypeScript-
 
 Confirm no exported declaration lacks JSDoc and no over-40-line body lacks a recorded decision. This is the acceptance evidence for the port; report any gap as a blocking issue rather than claiming completion.
 
-- [ ] **Step 8: Report**
+- [x] **Step 8: Report**
 
 Report the four root-gate command results, the pack file list, the internal-skills state, the clean-tree status, and the consolidated audit tables. Do **not** commit: this task changed no files, and an empty commit is forbidden by the plan's Completion rules.

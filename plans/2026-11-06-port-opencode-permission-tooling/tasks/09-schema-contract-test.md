@@ -10,14 +10,14 @@
 **Interfaces:**
 - Consumes:
   - `../.opencode/plugins/permission-optimizer/store`: `export function createObservationStore(dbPath: string, clock?: Clock): ObservationStore` (Task 05).
-  - `../.agents/skills/opencode-permission-optimizer/scripts/lib/read-observations`: `openObservationDatabase(dbPath: string): ObservationDatabaseResult`, `readExactInputEvidence(db: Database, scope: EvidenceScope): EvidenceReport`, `SCHEMA_VERSION = 3` (Task 07).
-  - `../.agents/skills/opencode-permission-optimizer/scripts/summarize`: `runSummary(input: SummaryInput): Record<string, unknown>` (Task 08), which throws `incompatible schema: expected 3, found 999` for an unsupported version.
+  - `../skills/opencode-permission-optimizer/scripts/lib/read-observations`: `openObservationDatabase(dbPath: string): ObservationDatabaseResult`, `readExactInputEvidence(db: Database, scope: EvidenceScope): EvidenceReport`, `SCHEMA_VERSION = 3` (Task 07).
+  - `../skills/opencode-permission-optimizer/scripts/summarize`: `runSummary(input: SummaryInput): Record<string, unknown>` (Task 08), which throws `incompatible schema: expected 3, found 999` for an unsupported version.
   - `Database` from `bun:sqlite`; `describe`, `it`, `expect`, `beforeEach`, `afterEach` from `bun:test`.
 - Produces: nothing (test-only task).
 
 This is a test-only addition guarding the SQLite schema (version 3) contract. Per `docs/TESTING.md` no new failing test is required; run the affected package suites before and after and record retained coverage. The code below is complete; its data setup was verified against the real plugin store and its reader SQL with `bun:sqlite`.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```bash
 mkdir -p test
@@ -35,8 +35,8 @@ import { createObservationStore } from "../.opencode/plugins/permission-optimize
 import {
   openObservationDatabase,
   readExactInputEvidence,
-} from "../.agents/skills/opencode-permission-optimizer/scripts/lib/read-observations"
-import { runSummary } from "../.agents/skills/opencode-permission-optimizer/scripts/summarize"
+} from "../skills/opencode-permission-optimizer/scripts/lib/read-observations"
+import { runSummary } from "../skills/opencode-permission-optimizer/scripts/summarize"
 
 const IDENTITY = "github.com/example/portfolio-app"
 const WORKTREE = "/worktrees/portfolio-app"
@@ -120,7 +120,7 @@ describe("observation schema contract", () => {
     ])
   })
 
-  it("rejects an unknown schema version by naming the expected and found versions", () => {
+  it("refuses a plugin-written database with a different schema version and names the expected and found versions", () => {
     const dbPath = join(tempDir, "observations.sqlite")
     seedApprovedObservation(dbPath)
     const writer = new Database(dbPath)
@@ -143,29 +143,31 @@ describe("observation schema contract", () => {
 })
 ```
 
+Failure modes this layer adds beyond the lower-layer suites (`docs/TESTING.md`), one representative assertion each: the first test fails when the real store's output and the reader's expectations drift apart (a column or encoding mismatch that each side's own fixtures cannot see); the second fails when a database written by the real store at another schema version is read instead of refused. Permutations stay in the plugin, reader and summarizer suites.
+
 The injected `CLOCK` pins retention so the fixed 2026-06 timestamps are not pruned. `cwd` is the repository root (`join(import.meta.dirname, "..")`), a real Git worktree, so `runSummary` resolves its worktree without a `git init`. `invokeInspector` is a stub that is never reached because the incompatible schema throws first. No live OpenCode and no network.
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 Run: `bun test ./test/contract.test.ts`
 Expected: PASS — 2 tests, 0 failures.
 
-- [ ] **Step 3: Record retained coverage**
+- [x] **Step 3: Record retained coverage**
 
 Run: `bun test ./.opencode/plugins/permission-optimizer/test/`
 Expected: PASS — plugin suite unchanged.
 
-Run: `bun test ./.agents/skills/opencode-permission-optimizer/scripts/test/`
+Run: `bun test ./skills/opencode-permission-optimizer/scripts/test/`
 Expected: PASS — optimizer skill suite unchanged.
 
 Run: `bun run typecheck`
 Expected: exit 0.
 
-- [ ] **Step 4: Record the changed-code audit tables (task acceptance)**
+- [x] **Step 4: Record the changed-code audit tables (task acceptance)**
 
-Exported declarations: none (a test file with no exports) — state this explicitly. Long bodies (over 40 physical lines): `seedApprovedObservation` and the two `it` callbacks are each under 40 lines; state this explicitly with their complete body bounds.
+Exported declarations: none (a test file with no exports) — state this explicitly. Long bodies (over 40 physical lines): `seedApprovedObservation` and the two `it` callbacks are each under 40 lines; the `describe` body may exceed 40 lines only because it groups the two independent test callbacks, a declarative grouping where extraction would harm readability. State the measured bounds explicitly.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add test/contract.test.ts

@@ -16,7 +16,7 @@
 
 This is a test-only addition guarding already-ported behavior. Per `docs/TESTING.md`, no new failing test is required; run the plugin suite before and after and record retained coverage. The code below is complete and was verified against the real plugin sources with `bun test` and `tsc --noEmit`.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Create `.opencode/plugins/permission-optimizer/test/entry.test.ts`:
 
@@ -171,14 +171,16 @@ describe("plugin entry", () => {
 })
 ```
 
+Failure modes this layer adds beyond the lower-layer suites (`docs/TESTING.md`): the asked, answered and completed events reaching the database at the overridden path proves the entry forwards the hooks to the real store with the override applied, which the lifecycle tests (they drive the lifecycle directly) cannot see; the default-database test proves the entry never opens the default path when an override is set; the last test proves the entry returns no hooks instead of throwing when the database cannot open.
+
 Notes on hermeticity (verified facts, not open questions): `os.homedir()` in Bun ignores `process.env.HOME`, so the "default database untouched" test snapshots the real default path's existence and SHA-256 before and after and asserts it is unchanged — the same guard `local-smoke.sh` implemented — rather than assuming it lives under a pinned temp home. The plugin's identity resolver runs `git` in the temp worktree; because the temp dir is not a Git worktree, harmless `fatal: not a git repository` lines appear on stderr and identity resolves to null. No live OpenCode, no network, and no write to the developer's real database occur.
 
-- [ ] **Step 2: Run the test**
+- [x] **Step 2: Run the test**
 
 Run: `bun test ./.opencode/plugins/permission-optimizer/test/entry.test.ts`
 Expected: PASS — 4 tests, 0 failures.
 
-- [ ] **Step 3: Record retained coverage (test-only consolidation)**
+- [x] **Step 3: Record retained coverage (test-only consolidation)**
 
 Run: `bun test ./.opencode/plugins/permission-optimizer/test/`
 Expected: PASS — the five ported plugin test files plus this entry test, all green. Record the before/after result: before adding `entry.test.ts` the five files passed (Task 05); after adding it, six files pass with no behavior change.
@@ -186,11 +188,11 @@ Expected: PASS — the five ported plugin test files plus this entry test, all g
 Run: `bun run typecheck`
 Expected: exit 0. The extensionless import `../../permission-optimizer` resolves to `.opencode/plugins/permission-optimizer.ts`.
 
-- [ ] **Step 4: Record the changed-code audit tables (task acceptance)**
+- [x] **Step 4: Record the changed-code audit tables (task acceptance)**
 
-Exported declarations: none (a test file with no exports) — state this explicitly. Long bodies (over 40 physical lines): the four `it` callbacks and the `describe` body are each under 40 lines; state this explicitly with their complete body bounds.
+Exported declarations: none (a test file with no exports) — state this explicitly. Long bodies (over 40 physical lines): the four `it` callbacks are each under 40 lines; the `describe` body exceeds 40 lines only because it groups the four independent test callbacks, a declarative grouping where extraction would harm readability. State both explicitly with complete body bounds.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .opencode/plugins/permission-optimizer/test/entry.test.ts

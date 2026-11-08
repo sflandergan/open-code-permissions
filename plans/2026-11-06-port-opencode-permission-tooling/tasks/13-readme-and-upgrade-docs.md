@@ -7,7 +7,7 @@
 **Files:**
 - Create: `README.md`
 - Create: `docs/TOOLKIT-UPGRADE.md`
-- Modify: `AGENTS.md` (one line added)
+- Modify: `AGENTS.md` (one line added; the skills-location sentence in the project context updated)
 
 **Interfaces:**
 - Consumes: `package.json` `version` (the single version) and its scripts (Task 01); the two published skills and the agent (Tasks 04, 08, 12); `mark-internal-skills` (Task 11).
@@ -15,7 +15,7 @@
 
 These are Markdown docs. Per `AGENTS.md`, docs-only changes need no workspace verification. The content below is complete; the skills CLI invocation form matches the toolkit's own `setup` reference (`npx skills add "<repo>/tree/<tag>" --skill <name> --agent <harness> --yes`).
 
-- [ ] **Step 1: Create the root README**
+- [x] **Step 1: Create the root README**
 
 Create `README.md`:
 
@@ -66,41 +66,41 @@ Copy `.opencode/agents/opencode-permissions.md` into your consumer repository's 
 ```bash
 bun install --frozen-lockfile
 bun run typecheck
-bun test ./.opencode ./.agents ./scripts ./test
+bun test ./.opencode ./skills ./scripts ./test
 bun run check-package
 ```
 
-The explicit `./`-prefixed test roots are required because Bun's test runner skips hidden directories (`.opencode/`, `.agents/`) during default discovery.
+The explicit `./`-prefixed test roots are required because Bun's test runner skips hidden directories (`.opencode/`) during default discovery.
 
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
 ```
 
-- [ ] **Step 2: Create the toolkit-upgrade guide**
+- [x] **Step 2: Create the toolkit-upgrade guide**
 
 Create `docs/TOOLKIT-UPGRADE.md`:
 
 ```markdown
 # Upgrading the agentic coding toolkit
 
-The skills CLI discovers every directory under `.agents/skills/`. This repository marks every installed toolkit skill `metadata.internal: true` so consumers of the two published skills (`opencode-permissions` and `opencode-permission-optimizer`) are not offered the toolkit's own workflow skills. `scripts/mark-internal-skills.ts` applies that marker; the internal-skills guard test fails CI if it is missing.
+The skills CLI discovers skills in `skills/`, `.agents/skills/` and `.claude/skills/`. The two published skills (`opencode-permissions` and `opencode-permission-optimizer`) live in `skills/`. Every toolkit skill lives in `.agents/skills/` and is marked `metadata.internal: true`, so consumers are not offered the toolkit's own workflow skills. `scripts/mark-internal-skills.ts` applies that marker; the internal-skills guard test fails CI if it is missing.
 
 Patching the `SKILL.md` files makes `setup` see modified content and ask, on each upgrade, whether to replace or retain the local content.
 
 ## During an upgrade
 
 1. For every replace-or-retain prompt, choose **replace** so toolkit skill content stays current with its source. `setup` then installs the upstream content, which drops the `metadata.internal` marker.
-2. After `setup` finishes, run `bun run mark-internal-skills` from the repository root to re-apply the marker to every non-published skill. It is idempotent and leaves the two published skills untouched.
-3. Run `bun test ./.opencode ./.agents ./scripts ./test` (or `bun run test`) to confirm the internal-skills guard and the rest of the suite still pass.
+2. After `setup` finishes, run `bun run mark-internal-skills` from the repository root to re-apply the marker to every skill under `.agents/skills/`. It is idempotent and never touches `skills/`.
+3. Run `bun test ./.opencode ./skills ./scripts ./test` (or `bun run test`) to confirm the internal-skills guard and the rest of the suite still pass.
 4. Commit the upgraded skill files together with the re-applied markers.
 
-Do not choose retain: keeping a stale local copy pins the toolkit skill to an older release while its `skills-lock.json` entry advances. Do not add `metadata.internal: true` to the two published skills; they must stay discoverable.
+Do not choose retain: keeping a stale local copy pins the toolkit skill to an older release while its `skills-lock.json` entry advances. Do not add `metadata.internal: true` to any skill under `skills/`; the published skills must stay discoverable.
 
 Upstream support in `agentic-coding-next` for marking installed skills internal would retire `mark-internal-skills`; that follow-up is tracked separately.
 ```
 
-- [ ] **Step 3: Add the one AGENTS.md line**
+- [x] **Step 3: Update `AGENTS.md`**
 
 Modify `AGENTS.md`: insert this single line immediately after the `- Throwaway work goes in \`/tmp/opencode-permissions/\`; clean up after use.` line (line 20), inside the `## Always Follow` list:
 
@@ -108,14 +108,14 @@ Modify `AGENTS.md`: insert this single line immediately after the `- Throwaway w
 - When upgrading the agentic coding toolkit, follow `docs/TOOLKIT-UPGRADE.md` (choose replace, rerun `bun run mark-internal-skills`, then `bun test`).
 ```
 
-Make no other change to `AGENTS.md`; it stays the minimal entry point.
+In the `## Project Context` paragraph, change `Skills live under `.agents/skills/`; OpenCode plugins and agents live under `.opencode/`.` to `Published skills live under `skills/`, toolkit skills under `.agents/skills/`; OpenCode plugins and agents live under `.opencode/`.` Make no other change to `AGENTS.md`; it stays the minimal entry point.
 
-- [ ] **Step 4: Verify (docs-only)**
+- [x] **Step 4: Verify (docs-only)**
 
 Run: `git diff --check`
-Expected: exit 0. No build, typecheck or test run is required for Markdown-only changes. `README.md` now exists, so `bun run check-package` still passes (the whitelist declares it and it is not a forbidden path).
+Expected: exit 0. No build, typecheck or test run is required for Markdown-only changes. `README.md` now exists, so `bun run check-package` still passes (the whitelist declares it and it is an allowed root file).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md docs/TOOLKIT-UPGRADE.md AGENTS.md

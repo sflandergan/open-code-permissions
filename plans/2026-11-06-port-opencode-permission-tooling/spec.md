@@ -9,8 +9,8 @@ The product has four parts:
 | Part | Source in `bikes-local` | Delivered to consumers by |
 |---|---|---|
 | Plugin `permission-optimizer` | `.opencode/plugins/permission-optimizer*` | npm package `opencode-permissions` |
-| Skill `opencode-permissions` | `.agents/skills/opencode-permissions` | skills CLI |
-| Skill `opencode-permission-optimizer` | `.agents/skills/opencode-permission-optimizer` | skills CLI |
+| Skill `opencode-permissions` | `skills/opencode-permissions` | skills CLI |
+| Skill `opencode-permission-optimizer` | `skills/opencode-permission-optimizer` | skills CLI |
 | Agent `opencode-permissions` | `.opencode/agents/opencode-permissions.md` | copy-in file, documented in the README |
 
 The whole product has **one version**. Users are never asked to reason about separate plugin, skill or agent versions.
@@ -29,8 +29,8 @@ The whole product has **one version**. Users are never asked to reason about sep
 OpenCode terms are used as in `docs/CODING_GUIDELINES.md`: permission, rule, pattern, action, agent, session.
 
 - **Observation**: one persisted lifecycle of a permission request (asked, then decision, then completion), keyed by OpenCode's `request_id`.
-- **Published skill**: one of the two skills this repository ships (`opencode-permissions`, `opencode-permission-optimizer`).
-- **Toolkit skill**: any other skill under `.agents/skills/`, installed by `setup` from `agentic-coding-next` or a third party and recorded in `skills-lock.json`.
+- **Published skill**: one of the two skills this repository ships from the top-level `skills/` directory (`opencode-permissions`, `opencode-permission-optimizer`).
+- **Toolkit skill**: any skill under `.agents/skills/`, installed by `setup` from `agentic-coding-next` or a third party and recorded in `skills-lock.json`.
 - **Internal skill**: a skill whose `SKILL.md` frontmatter sets `metadata.internal: true`, which hides it from the skills CLI's normal discovery.
 
 ## Architecture
@@ -49,8 +49,8 @@ scripts/
 .opencode/plugins/permission-optimizer.ts          # single-export plugin entry
 .opencode/plugins/permission-optimizer/            # plugin code, schema.sql, migrations/, README, test/
 .opencode/agents/opencode-permissions.md           # agent
-.agents/skills/opencode-permissions/               # SKILL.md, README, scripts/{inspect.sh,inspect.ts,lib/,test/}
-.agents/skills/opencode-permission-optimizer/      # SKILL.md, README, references/, scripts/{summarize.sh,list-agents.sh,summarize.ts,lib/,test/}
+skills/opencode-permissions/               # SKILL.md, README, scripts/{inspect.sh,inspect.ts,lib/,test/}
+skills/opencode-permission-optimizer/      # SKILL.md, README, references/, scripts/{summarize.sh,list-agents.sh,summarize.ts,lib/,test/}
 .claude/skills/opencode-permissions                # symlink to the skill, as the toolkit links its own
 .claude/skills/opencode-permission-optimizer       # symlink
 docs/agents/opencode-permission-optimizer.md       # role doc for this repository
@@ -77,10 +77,10 @@ docs/TOOLKIT-UPGRADE.md                            # agent instructions for upgr
 
 ### Hiding toolkit skills from consumer installs
 
-The skills CLI scans `.agents/skills/` (and `.claude/skills/`, which here is symlinks into it), so without intervention a consumer would be offered every toolkit skill. The only exclusion mechanism the CLI documents is `metadata.internal: true`; `skills.sh.json` `paths` can only add locations.
+The skills CLI discovers skills in `skills/`, `.agents/skills/` and `.claude/skills/` (here symlinks into either), so without intervention a consumer would be offered every toolkit skill alongside the published ones. Published skills live in `skills/`; toolkit skills live in `.agents/skills/`. The only exclusion mechanism the CLI documents is `metadata.internal: true`; `skills.sh.json` `paths` can only add locations.
 
-- `scripts/mark-internal-skills.ts` (`bun run mark-internal-skills`) sets `metadata.internal: true` in every `.agents/skills/*/SKILL.md` except the published skills, which are named in a single file-level constant. It is idempotent, merges into existing frontmatter and leaves other keys untouched. `--check` reports offenders and exits non-zero without writing.
-- A test runs the check against the repository, so a toolkit upgrade that undoes the patch fails CI. The same test asserts neither published skill is internal.
+- `scripts/mark-internal-skills.ts` (`bun run mark-internal-skills`) sets `metadata.internal: true` in every `.agents/skills/*/SKILL.md`; it never touches `skills/`. It is idempotent, merges into existing frontmatter and leaves other keys untouched. `--check` reports offenders and exits non-zero without writing.
+- A test runs the check against the repository, so a toolkit upgrade that undoes the patch fails CI. The same test asserts that no skill under `skills/` is internal.
 - Patching makes `setup` see modified content and ask replace-or-retain on each upgrade. `docs/TOOLKIT-UPGRADE.md` tells the agent to choose replace, rerun `bun run mark-internal-skills`, then run `bun test`. `AGENTS.md` gains one line pointing to that guide.
 
 ## Components
@@ -128,7 +128,7 @@ Tests follow `docs/TESTING.md`: `bun:test`, `test/` beside the code, temporary d
 | Contract test | A database written by the real plugin store is read correctly by the optimizer reader; an unknown schema version is rejected. The only test crossing the plugin/skill boundary |
 | Boundary test | No production import crosses plugin, skill or `scripts/` areas |
 | Internal-skills guard | Every non-published skill is internal; published skills are not |
-| Package-content check | `scripts/check-package.ts` asserts the `npm pack --dry-run --json` file list includes the entry, `schema.sql` and migrations and excludes skills, tests, fixtures and `plans/`; the assertion is a pure function with its own unit test |
+| Package-content check | `scripts/check-package.ts` asserts the `npm pack --dry-run --json` file list includes the entry, `schema.sql` and migrations and contains only the manifest, `README.md`, `LICENSE`, the entry and files with the extensions `.ts`, `.sql` and `.md` under the plugin directory outside `test/`; the assertion is a pure function with its own unit test |
 
 `.github/workflows/ci.yml` runs on pull requests and pushes to `main` with `permissions: contents: read`: checkout, `oven-sh/setup-bun`, `bun install --frozen-lockfile`, `bun run typecheck`, `bun test`, `bun run check-package`. Third-party actions are pinned by full commit SHA. Root `package.json` defines the `typecheck` (`tsc --noEmit`) and `test` scripts required by `AGENTS.md`.
 

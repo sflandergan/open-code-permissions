@@ -1,68 +1,68 @@
 # Task 10: Boundary test
 
-**Objective:** Enforce with a static import scan that no production file in the plugin, in a published skill, or in `scripts/` imports from another of those areas.
+**Objective:** Enforce with a static import scan that no non-test file in the plugin, in a published skill, or in `scripts/` imports from another of those areas.
 
 **Unit:** 5 (Guards). Depends on Task 02 (`scripts/check-package.ts`), Task 03/04 (`opencode-permissions` skill), Task 05 (plugin), Task 07/08 (`opencode-permission-optimizer` skill).
 
 **Files:**
-- Create: `test/helpers/production-imports.ts`
-- Create: `test/boundary.test.ts`
+- Create: `test/helpers/source-import-specifiers.ts`
+- Create: `test/cross-area-imports.test.ts`
 
 **Interfaces:**
 - Consumes: the repository layout from Tasks 02–08.
-- Produces (helper API used only by `test/boundary.test.ts`):
-  - `export type Area = "plugin" | "opencode-permissions" | "opencode-permission-optimizer" | "scripts"`
-  - `export interface ProductionFile { path: string; area: Area | null; imports: string[] }`
-  - `export function areaOf(path: string): Area | null`
-  - `export function collectProductionFiles(root: string): ProductionFile[]`
-  - `export function findAreaViolations(files: ProductionFile[]): string[]` — one message per offending import, naming the file, specifier and target area.
+- Produces (helper API used only by `test/cross-area-imports.test.ts`):
+  - `export type SourceArea = "permission-optimizer-plugin" | "opencode-permissions-skill" | "opencode-permission-optimizer-skill" | "repository-scripts"`
+  - `export interface SourceFile { path: string; area: SourceArea | null; importSpecifiers: string[] }`
+  - `export function findSourceArea(path: string): SourceArea | null`
+  - `export function readSourceFiles(root: string): SourceFile[]`
+  - `export function findCrossAreaImports(files: SourceFile[]): string[]` — one message per offending import, naming the file, specifier and target area.
 
 This is a test-only addition. Per `docs/TESTING.md` no new failing test is required; the deliverable is a passing guard that also proves its own scan covered real files. The code below is complete.
 
-- [ ] **Step 1: Write the helper**
+- [x] **Step 1: Write the helper**
 
 ```bash
 mkdir -p test/helpers
 ```
 
-Create `test/helpers/production-imports.ts`:
+Create `test/helpers/source-import-specifiers.ts`:
 
 ```ts
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join, normalize, relative } from "node:path"
 
-export type Area = "plugin" | "opencode-permissions" | "opencode-permission-optimizer" | "scripts"
+export type SourceArea = "permission-optimizer-plugin" | "opencode-permissions-skill" | "opencode-permission-optimizer-skill" | "repository-scripts"
 
-export interface ProductionFile {
+export interface SourceFile {
   path: string
-  area: Area | null
-  imports: string[]
+  area: SourceArea | null
+  importSpecifiers: string[]
 }
 
 const AREA_ROOTS: readonly string[] = [
   ".opencode/plugins/permission-optimizer.ts",
   ".opencode/plugins/permission-optimizer",
-  ".agents/skills/opencode-permissions",
-  ".agents/skills/opencode-permission-optimizer",
+  "skills/opencode-permissions",
+  "skills/opencode-permission-optimizer",
   "scripts",
 ]
 
-/** Classify a repository-relative path into the product area that owns it. */
-export function areaOf(path: string): Area | null {
+/** Return the source area that owns a repository-relative path, or null when no area owns it. */
+export function findSourceArea(path: string): SourceArea | null {
   const p = path.replace(/\\/g, "/")
   if (
     p.startsWith(".opencode/plugins/permission-optimizer/") ||
     p.startsWith(".opencode/plugins/permission-optimizer.ts")
   ) {
-    return "plugin"
+    return "permission-optimizer-plugin"
   }
-  if (p.startsWith(".agents/skills/opencode-permissions/")) return "opencode-permissions"
-  if (p.startsWith(".agents/skills/opencode-permission-optimizer/")) return "opencode-permission-optimizer"
-  if (p.startsWith("scripts/")) return "scripts"
+  if (p.startsWith("skills/opencode-permissions/")) return "opencode-permissions-skill"
+  if (p.startsWith("skills/opencode-permission-optimizer/")) return "opencode-permission-optimizer-skill"
+  if (p.startsWith("scripts/")) return "repository-scripts"
   return null
 }
 
-function extractImports(source: string): string[] {
+function readImportSpecifiers(source: string): string[] {
   const found = new Set<string>()
   const patterns = [
     "\\bfrom\\s*[\"']([^\"']+)[\"']",
@@ -78,12 +78,12 @@ function extractImports(source: string): string[] {
   return [...found]
 }
 
-function walk(dir: string, root: string, out: string[]): void {
+function listTypeScriptPaths(dir: string, root: string, out: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === "node_modules" || entry.name === ".temp" || entry.name === "test") continue
     const full = join(dir, entry.name)
     if (entry.isDirectory()) {
-      walk(full, root, out)
+      listTypeScriptPaths(full, root, out)
       continue
     }
     if (!entry.isFile()) continue
@@ -92,32 +92,32 @@ function walk(dir: string, root: string, out: string[]): void {
   }
 }
 
-/** Collect every non-test TypeScript production file in the four product areas. */
-export function collectProductionFiles(root: string): ProductionFile[] {
-  const files: ProductionFile[] = []
+/** Read every non-test TypeScript file in the four source areas with its import specifiers. */
+export function readSourceFiles(root: string): SourceFile[] {
+  const files: SourceFile[] = []
   for (const areaRoot of AREA_ROOTS) {
     const abs = join(root, areaRoot)
     if (!existsSync(abs)) continue
     const paths: string[] = []
     if (statSync(abs).isFile()) paths.push(areaRoot)
-    else walk(abs, root, paths)
+    else listTypeScriptPaths(abs, root, paths)
     for (const path of paths) {
       const source = readFileSync(join(root, path), "utf8")
-      files.push({ path, area: areaOf(path), imports: extractImports(source) })
+      files.push({ path, area: findSourceArea(path), importSpecifiers: readImportSpecifiers(source) })
     }
   }
   return files
 }
 
-/** Return one message per production import whose resolved target is in a different area. */
-export function findAreaViolations(files: ProductionFile[]): string[] {
+/** Return one message per relative import whose resolved target is in a different source area. */
+export function findCrossAreaImports(files: SourceFile[]): string[] {
   const violations: string[] = []
   for (const file of files) {
     if (file.area === null) continue
-    for (const specifier of file.imports) {
+    for (const specifier of file.importSpecifiers) {
       if (!specifier.startsWith(".")) continue
       const target = normalize(join(dirname(file.path), specifier)).replace(/\\/g, "/")
-      const targetArea = areaOf(target)
+      const targetArea = findSourceArea(target)
       if (targetArea !== null && targetArea !== file.area) {
         violations.push(`${file.path} imports ${specifier} from ${targetArea}`)
       }
@@ -127,80 +127,82 @@ export function findAreaViolations(files: ProductionFile[]): string[] {
 }
 ```
 
-Only relative import specifiers are checked; bare specifiers (`bun:sqlite`, `node:fs`, `@opencode-ai/plugin`) are external by definition. Test files (`*.test.ts`), `test/` directories, `node_modules`, and `.temp/` are excluded, so the contract test and the seed fixture do not count as cross-area production imports.
+Only relative import specifiers are checked; bare specifiers (`bun:sqlite`, `node:fs`, `@opencode-ai/plugin`) are external by definition. Test files (`*.test.ts`), `test/` directories, `node_modules`, and `.temp/` are excluded, so the contract test and the seed fixture do not count as cross-area imports.
 
-- [ ] **Step 2: Write the test**
+- [x] **Step 2: Write the test**
 
-Create `test/boundary.test.ts`:
+Create `test/cross-area-imports.test.ts`:
 
 ```ts
 import { describe, it, expect } from "bun:test"
 import { join } from "node:path"
 import {
-  areaOf,
-  collectProductionFiles,
-  findAreaViolations,
-  type ProductionFile,
-} from "./helpers/production-imports"
+  findCrossAreaImports,
+  findSourceArea,
+  readSourceFiles,
+  type SourceArea,
+  type SourceFile,
+} from "./helpers/source-import-specifiers"
 
-function productionFile(path: string, imports: string[]): ProductionFile {
-  return { path, area: areaOf(path), imports }
+function sourceFile(path: string, importSpecifiers: string[]): SourceFile {
+  return { path, area: findSourceArea(path), importSpecifiers }
 }
 
-describe("production import areas", () => {
+describe("cross-area imports", () => {
   it("rejects a plugin module that imports a published skill", () => {
     const files = [
-      productionFile(".opencode/plugins/permission-optimizer/store.ts", [
-        "../../../.agents/skills/opencode-permissions/scripts/lib/jsonc",
+      sourceFile(".opencode/plugins/permission-optimizer/store.ts", [
+        "../../../skills/opencode-permissions/scripts/lib/jsonc",
       ]),
     ]
-    expect(findAreaViolations(files)).toEqual([
-      ".opencode/plugins/permission-optimizer/store.ts imports ../../../.agents/skills/opencode-permissions/scripts/lib/jsonc from opencode-permissions",
+    expect(findCrossAreaImports(files)).toEqual([
+      ".opencode/plugins/permission-optimizer/store.ts imports ../../../skills/opencode-permissions/scripts/lib/jsonc from opencode-permissions-skill",
     ])
   })
 
   it("accepts a plugin module that imports another plugin module", () => {
     const files = [
-      productionFile(".opencode/plugins/permission-optimizer/store.ts", ["./database", "./schema"]),
+      sourceFile(".opencode/plugins/permission-optimizer/store.ts", ["./database", "./schema"]),
     ]
-    expect(findAreaViolations(files)).toEqual([])
+    expect(findCrossAreaImports(files)).toEqual([])
   })
 
-  it("finds no production imports crossing between product areas in this repository", () => {
+  it("finds no import crossing between source areas in this repository", () => {
     const repoRoot = join(import.meta.dirname, "..")
-    const files = collectProductionFiles(repoRoot)
+    const files = readSourceFiles(repoRoot)
 
     expect(files.length).toBeGreaterThan(0)
-    for (const area of [
-      "plugin",
-      "opencode-permissions",
-      "opencode-permission-optimizer",
-      "scripts",
-    ] as const) {
+    const areas: SourceArea[] = [
+      "permission-optimizer-plugin",
+      "opencode-permissions-skill",
+      "opencode-permission-optimizer-skill",
+      "repository-scripts",
+    ]
+    for (const area of areas) {
       expect(files.filter((file) => file.area === area).length).toBeGreaterThan(0)
     }
-    expect(findAreaViolations(files)).toEqual([])
+    expect(findCrossAreaImports(files)).toEqual([])
   })
 })
 ```
 
-The per-area count assertions are the main proof that the scan actually covered real production files in all four areas; the empty-violations assertion is the secondary guard.
+The per-area count assertions are the main proof that the scan actually covered real source files in all four areas; the empty-violations assertion is the secondary guard.
 
-- [ ] **Step 3: Run the test**
+- [x] **Step 3: Run the test**
 
-Run: `bun test ./test/boundary.test.ts`
-Expected: PASS — 3 tests, 0 failures, with production files found in all four areas.
+Run: `bun test ./test/cross-area-imports.test.ts`
+Expected: PASS — 3 tests, 0 failures, with source files found in all four areas.
 
 Run: `bun run typecheck`
 Expected: exit 0.
 
-- [ ] **Step 4: Record the changed-code audit tables (task acceptance)**
+- [x] **Step 4: Record the changed-code audit tables (task acceptance)**
 
-Exported declarations: `Area`, `ProductionFile`, `areaOf`, `collectProductionFiles`, `findAreaViolations` — record file, line range, contract, invariants (only relative specifiers; test and `node_modules` directories excluded), and JSDoc location for each. Long bodies (over 40 physical lines): `areaOf`, `extractImports`, `walk`, `collectProductionFiles`, and `findAreaViolations` are each under 40 lines; state this explicitly with their complete body bounds. `test/boundary.test.ts` has no exported declarations.
+Exported declarations: `SourceArea`, `SourceFile`, `findSourceArea`, `readSourceFiles`, `findCrossAreaImports` — record file, line range, contract, invariants (only relative specifiers; test and `node_modules` directories excluded), and JSDoc location for each. Long bodies (over 40 physical lines): `findSourceArea`, `readImportSpecifiers`, `listTypeScriptPaths`, `readSourceFiles`, and `findCrossAreaImports` are each under 40 lines; state this explicitly with their complete body bounds. `test/cross-area-imports.test.ts` has no exported declarations.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
-git add test/helpers/production-imports.ts test/boundary.test.ts
-git commit -m "test: forbid production imports across product areas"
+git add test/helpers/source-import-specifiers.ts test/cross-area-imports.test.ts
+git commit -m "test: forbid imports across source areas"
 ```

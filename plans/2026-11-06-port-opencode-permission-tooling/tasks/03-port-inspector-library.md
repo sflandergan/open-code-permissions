@@ -5,19 +5,19 @@
 **Unit:** 2 (`opencode-permissions` skill). Depends on Task 01 (`tsconfig.json`, `bun:test`).
 
 **Files:**
-- Create: `.agents/skills/opencode-permissions/scripts/lib/jsonc.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/opencode-runtime.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/inspection.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/declarations.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/rule-attribution.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/repository-configs.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/frontmatter.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/types.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/lib/errors.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/inspect.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/test/inspection.test.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/test/opencode-runtime.test.ts`
-- Create: `.agents/skills/opencode-permissions/scripts/test/fixtures/{agent.md,debug-agent.json,agent-list.txt,debug-config.json,opencode.json}`
+- Create: `skills/opencode-permissions/scripts/lib/jsonc.ts`
+- Create: `skills/opencode-permissions/scripts/lib/opencode-runtime.ts`
+- Create: `skills/opencode-permissions/scripts/lib/inspection.ts`
+- Create: `skills/opencode-permissions/scripts/lib/declarations.ts`
+- Create: `skills/opencode-permissions/scripts/lib/rule-attribution.ts`
+- Create: `skills/opencode-permissions/scripts/lib/repository-configs.ts`
+- Create: `skills/opencode-permissions/scripts/lib/frontmatter.ts`
+- Create: `skills/opencode-permissions/scripts/lib/types.ts`
+- Create: `skills/opencode-permissions/scripts/lib/errors.ts`
+- Create: `skills/opencode-permissions/scripts/inspect.ts`
+- Create: `skills/opencode-permissions/scripts/test/inspection.test.ts`
+- Create: `skills/opencode-permissions/scripts/test/opencode-runtime.test.ts`
+- Create: `skills/opencode-permissions/scripts/test/fixtures/{agent.md,debug-agent.json,agent-list.txt,debug-config.json,opencode.json}`
 
 **Interfaces:**
 - Consumes: root `tsconfig.json` (Task 01); `bun:test` (Bun).
@@ -30,46 +30,46 @@
   - All shared types are defined in `lib/types.ts` (complete code in Step 3): `AgentStatus`, `Scope`, `PermissionRule`, `AgentListEntry`, `ResolvedConfig`, `ResolvedAgentConfig`, `OpenCodeRuntime`, `AgentListReport`, `RuleOrigin`, `RuleOverride`, `EffectiveRule`, `EffectiveAgent`, `EffectivePolicyReport`, `InspectArgs`, `RepositoryConfig`, `DeclarationTuple`, `EffectiveDeclaration`, `PermissionDeclarations`.
   - `OpenCodeRuntimeDeps` is declared locally in `lib/opencode-runtime.ts` as `{ execFile: typeof import("node:child_process").execFile; spawn?: typeof import("node:child_process").spawn; env?: Record<string, string | undefined>; timeoutMs?: number }`.
 
-**Ported-source convention** (applies to every copied file): source root `<SOURCE_ROOT provided by the user>` at commit `29ee8718f4ab4a50297f30ceb5ee40e4ad02035a` (fallback: clone `<source repository remote provided by the user>` at that commit). For each file: `cp <source> <dest>`, then apply all applicable transforms:
+**Ported-source convention** (applies to every copied file): `SOURCE_ROOT` is the `bikes-local` checkout that the controller obtained from the user and passes in the task prompt. It must be at commit `29ee8718f4ab4a50297f30ceb5ee40e4ad02035a` with a clean tree: `git -C "$SOURCE_ROOT" rev-parse HEAD` prints that hash and `git -C "$SOURCE_ROOT" status --porcelain` prints nothing. When `SOURCE_ROOT` is missing or fails either check, stop and report BLOCKED; never guess a path. For each file: `cp "$SOURCE_ROOT"/<source> <dest>`, then apply all applicable transforms:
 
 1. Rename `.mjs` → `.ts`; remove `#!/usr/bin/env node` from library modules; entry scripts use `#!/usr/bin/env bun`.
 2. Drop the `.mjs` extension from every relative import specifier (`./lib/jsonc.mjs` → `./lib/jsonc`); Bun and `moduleResolution: Bundler` resolve extensionless imports to `.ts`.
 3. Turn JSDoc `@param`/`@returns` into TypeScript annotations; type every parameter, return and variable; use `unknown` (never `any`) for untrusted values and narrow at boundaries; use `import type` for type-only imports; add JSDoc contracts to every exported declaration; keep file-level constants at the top of each file.
 4. Decompose any function-like body over 40 physical lines; record both `docs/CODING_GUIDELINES.md` changed-code audit tables.
-5. Convert `node:test` → `bun:test` (`describe`, `it`, `test`, `beforeEach`, `afterEach`, `expect`). `bun:test` passes **no** `t` context, so replace each `t.after(cleanup)` with `try { … } finally { cleanup() }` or a shared `withTempDirectory` helper. Convert `node:assert/strict` to `expect`: `equal`/`strictEqual`/`deepEqual`/`deepStrictEqual` → `toEqual`; `notEqual` → `.not.toEqual`; `ok(v)` → `toBeTruthy()`; `match`/`doesNotMatch` → `toMatch`/`.not.toMatch`; `throws(fn, /re/)` → `toThrow(/re/)` (for `err.code`, try/catch then `expect((caught as { code: string }).code).toEqual("CODE")`); `rejects(p, /re/)` → `await expect(p).rejects.toThrow(/re/)` (for `err.code`, `await expect(p).rejects.toMatchObject({ code: "CODE" })`); `fail(msg)` → `throw new Error(msg)`. Rewrite every test name per `docs/TESTING.md`: state situation and expected outcome in domain terms with concrete values, no code identifiers, internal working terms, or technique words.
+5. Convert `node:test` → `bun:test` (`describe`, `it`, `test`, `beforeEach`, `afterEach`, `expect`). `bun:test` passes **no** `t` context, so replace each `t.after(cleanup)` with `try { … } finally { cleanup() }` or a shared `withTempDirectory` helper. Convert `node:assert/strict` to `expect`: `equal`/`strictEqual`/`deepEqual`/`deepStrictEqual` → `toEqual`; `notEqual` → `.not.toEqual`; `ok(v)` → `toBeTruthy()`; `match`/`doesNotMatch` → `toMatch`/`.not.toMatch`; `throws(fn, /re/)` → `toThrow(/re/)` (for `err.code`, try/catch then `expect((caught as { code: string }).code).toEqual("CODE")`); `rejects(p, /re/)` → `await expect(p).rejects.toThrow(/re/)` (for `err.code`, `await expect(p).rejects.toMatchObject({ code: "CODE" })`); `fail(msg)` → `throw new Error(msg)`. Rewrite every test name per `docs/TESTING.md`: state situation and expected outcome in domain terms; fixture values and paths stay in the arrange and assert code; no code identifiers, internal working terms, change-history words, or technique words, except an identifier that is itself the externally visible contract under test.
 6. Neutralize: `github.com/example/bikes-local` → `github.com/example/portfolio-app`; `/worktrees/bikes-local` → `/worktrees/portfolio-app`; `/tmp/bikes-local` → `/tmp/portfolio-app`; `/tmp/paseo-fake-home` → `/tmp/example-home`; `join(tmpdir(), "bikes-local")` → `join(tmpdir(), "opencode-permissions")`; `pnpm` examples/fixtures → `bun`; `internal Node inspector` → `internal Bun inspector`.
 7. Behavior is preserved and guarded by the ported tests; no live OpenCode and no network.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```bash
-mkdir -p .agents/skills/opencode-permissions/scripts/lib \
-         .agents/skills/opencode-permissions/scripts/test/fixtures
-cp <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/test/inspection.test.mjs \
-   .agents/skills/opencode-permissions/scripts/test/inspection.test.ts
-cp <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/test/opencode-runtime.test.mjs \
-   .agents/skills/opencode-permissions/scripts/test/opencode-runtime.test.ts
-cp <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/test/fixtures/agent.md \
-   <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/test/fixtures/debug-agent.json \
-   <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/test/fixtures/agent-list.txt \
-   <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/test/fixtures/debug-config.json \
-   <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/test/fixtures/opencode.json \
-   .agents/skills/opencode-permissions/scripts/test/fixtures/
+mkdir -p skills/opencode-permissions/scripts/lib \
+         skills/opencode-permissions/scripts/test/fixtures
+cp "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/test/inspection.test.mjs \
+   skills/opencode-permissions/scripts/test/inspection.test.ts
+cp "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/test/opencode-runtime.test.mjs \
+   skills/opencode-permissions/scripts/test/opencode-runtime.test.ts
+cp "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/test/fixtures/agent.md \
+   "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/test/fixtures/debug-agent.json \
+   "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/test/fixtures/agent-list.txt \
+   "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/test/fixtures/debug-config.json \
+   "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/test/fixtures/opencode.json \
+   skills/opencode-permissions/scripts/test/fixtures/
 ```
 
 Apply transforms 2, 5, 6 to both test files and transform 6 to the fixtures. In `inspection.test.ts` specifically: change `../lib/inspection.mjs` → `../lib/inspection`, add `import { parseFrontmatterPermission } from "../lib/frontmatter"`, change `../lib/jsonc.mjs` → `../lib/jsonc`, and change `../inspect.mjs` → `../inspect`. In `opencode-runtime.test.ts`, change `../lib/opencode-runtime.mjs` → `../lib/opencode-runtime`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
-Run: `bun test ./.agents/skills/opencode-permissions/scripts/test/inspection.test.ts`
+Run: `bun test ./skills/opencode-permissions/scripts/test/inspection.test.ts`
 Expected: FAIL — `Cannot find module '../lib/inspection'`.
 
-Run: `bun test ./.agents/skills/opencode-permissions/scripts/test/opencode-runtime.test.ts`
+Run: `bun test ./skills/opencode-permissions/scripts/test/opencode-runtime.test.ts`
 Expected: FAIL — `Cannot find module '../lib/opencode-runtime'`.
 
-- [ ] **Step 3: Create the two new shared modules (complete code)**
+- [x] **Step 3: Create the two new shared modules (complete code)**
 
-Create `.agents/skills/opencode-permissions/scripts/lib/types.ts`:
+Create `skills/opencode-permissions/scripts/lib/types.ts`:
 
 ```ts
 /** Shared report and policy types for the inspector. */
@@ -164,7 +164,7 @@ export interface EffectiveDeclaration extends DeclarationTuple {
 export type PermissionDeclarations = Record<string, string | Record<string, string>>
 ```
 
-Create `.agents/skills/opencode-permissions/scripts/lib/errors.ts`:
+Create `skills/opencode-permissions/scripts/lib/errors.ts`:
 
 ```ts
 /**
@@ -176,20 +176,20 @@ export function inspectionError(code: string, message: string): Error & { code: 
 }
 ```
 
-- [ ] **Step 4: Port the two leaf modules**
+- [x] **Step 4: Port the two leaf modules**
 
 ```bash
-cp <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/lib/jsonc.mjs \
-   .agents/skills/opencode-permissions/scripts/lib/jsonc.ts
-cp <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/lib/opencode-runtime.mjs \
-   .agents/skills/opencode-permissions/scripts/lib/opencode-runtime.ts
+cp "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/lib/jsonc.mjs \
+   skills/opencode-permissions/scripts/lib/jsonc.ts
+cp "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/lib/opencode-runtime.mjs \
+   skills/opencode-permissions/scripts/lib/opencode-runtime.ts
 ```
 
 Apply transforms 1, 2, 3, 4, 6. In `opencode-runtime.ts`: declare and export `OpenCodeRuntimeDeps` as `{ execFile: typeof import("node:child_process").execFile; spawn?: typeof import("node:child_process").spawn; env?: Record<string, string | undefined>; timeoutMs?: number }`; import `OpenCodeRuntime`, `AgentListEntry`, `PermissionRule` from `./types` with `import type`; replace `join(tmpdir(), "bikes-local")` with `join(tmpdir(), "opencode-permissions")`. Keep `createOpenCodeRuntime`, `DEFAULT_TIMEOUT_MS`, `MINIMAL_PLATFORM_VARS`, `VALID_ACTIONS`, `VALID_MODES`, `AGENT_BLOCK_HEADER`, `ARRAY_OPEN_LINE`, `ARRAY_CLOSE_LINE` as file-level constants at the top.
 
-- [ ] **Step 5: Port and decompose `inspection.mjs`**
+- [x] **Step 5: Port and decompose `inspection.mjs`**
 
-Source: `<SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/lib/inspection.mjs`. Split its named functions into these files exactly; do not change any function body's behavior:
+Source: `$SOURCE_ROOT/.agents/skills/opencode-permissions/scripts/lib/inspection.mjs`. Split its named functions into these files exactly; do not change any function body's behavior:
 
 | Target module | Functions moved from `inspection.mjs` | Exports |
 |---|---|---|
@@ -212,26 +212,26 @@ Wire the cross-module imports exactly as follows; this graph is acyclic:
 
 Use `import type` for type-only imports. Apply transforms 1, 2, 3, 4 to every resulting file. No resulting function-like body may exceed 40 physical lines; extract a named helper where one does.
 
-- [ ] **Step 6: Port `inspect.mjs` → `inspect.ts`**
+- [x] **Step 6: Port `inspect.mjs` → `inspect.ts`**
 
 ```bash
-cp <SOURCE_ROOT provided by the user>/.agents/skills/opencode-permissions/scripts/inspect.mjs \
-   .agents/skills/opencode-permissions/scripts/inspect.ts
+cp "$SOURCE_ROOT"/.agents/skills/opencode-permissions/scripts/inspect.mjs \
+   skills/opencode-permissions/scripts/inspect.ts
 ```
 
 Apply transforms 1, 2, 3, 4, 6. Keep `USAGE` and `WRAPPER_REPOSITORY_ROOT_VAR` as file-level constants at the top. Change imports to `./lib/opencode-runtime` and `./lib/inspection`. Keep the `isMain` guard (`fileURLToPath(import.meta.url) === realpathSync(process.argv[1])`) so importing `inspect.ts` from a test does not run `main`. Add `import type { InspectArgs, AgentListReport, EffectivePolicyReport } from "./lib/types"`.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
-Run: `bun test ./.agents/skills/opencode-permissions/scripts/test/inspection.test.ts`
+Run: `bun test ./skills/opencode-permissions/scripts/test/inspection.test.ts`
 Expected: PASS — all cases green.
 
-Run: `bun test ./.agents/skills/opencode-permissions/scripts/test/opencode-runtime.test.ts`
+Run: `bun test ./skills/opencode-permissions/scripts/test/opencode-runtime.test.ts`
 Expected: PASS — all cases green.
 
 If a test fails, fix the ported module (not the test's asserted behavior): the source is behavior-preserving, so a failure means a transform introduced a type or logic error. Record the before/after results for any test-name or assertion consolidation.
 
-- [ ] **Step 8: Typecheck and record the changed-code audit tables**
+- [x] **Step 8: Typecheck and record the changed-code audit tables**
 
 Run: `bun run typecheck`
 Expected: exit 0.
@@ -250,9 +250,11 @@ Exported declarations (record file, line range, contract, hidden invariants / er
 
 Long bodies (over 40 physical lines): none after decomposition; state this explicitly with the complete body bounds of `parseIndentedMapping`, `findYamlSeparator`, `stripComment`, `createEffectivePolicyReport`, and `buildRuleRecords` as the closest-to-limit cases, recording the named helpers extracted from each.
 
-- [ ] **Step 9: Commit**
+Test-name acceptance (task acceptance): the worker report contains (a) a table mapping the old name of every renamed test in `skills/opencode-permissions/scripts/test/inspection.test.ts` and `opencode-runtime.test.ts` to its new name, and (b) the output of a grep over the ported test names for change-history words (`now`, `still`, `unchanged`, `replaces`), technique words (`round-trip`, `serializ`, `deriv`) and identifier-shaped tokens (camelCase, snake_case, file names). Every remaining hit is either removed or justified as the externally visible contract under test. A name that violates `docs/TESTING.md` fails task acceptance.
+
+- [x] **Step 9: Commit**
 
 ```bash
-git add .agents/skills/opencode-permissions/scripts
+git add skills/opencode-permissions/scripts
 git commit -m "feat: port the permission inspector to strict decomposed TypeScript"
 ```

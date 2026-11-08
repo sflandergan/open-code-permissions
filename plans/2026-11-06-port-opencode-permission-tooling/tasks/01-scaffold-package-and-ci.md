@@ -15,13 +15,13 @@
 - Consumes: nothing (first task).
 - Produces:
   - `package.json` `name` = `"opencode-permissions"`, `version` = `"0.1.0"` (the initial single version), `private: true`, `type: "module"`, `exports["."]` = `"./.opencode/plugins/permission-optimizer.ts"`.
-  - `package.json` `scripts`: `"typecheck": "tsc --noEmit"`, `"test": "bun test ./.opencode ./.agents ./scripts ./test"`, `"check-package": "bun scripts/check-package.ts"`, `"mark-internal-skills": "bun scripts/mark-internal-skills.ts"`.
+  - `package.json` `scripts`: `"typecheck": "tsc --noEmit"`, `"test": "bun test ./.opencode ./skills ./scripts ./test"`, `"check-package": "bun scripts/check-package.ts"`, `"mark-internal-skills": "bun scripts/mark-internal-skills.ts"`.
   - `package.json` `devDependencies`: `@opencode-ai/plugin@^1.19.5`, `@types/bun@^1.4.4`, `typescript@~6.0.3`.
   - Root `tsconfig.json` compiler options (strict) discovered by all later TypeScript tasks: `strict: true`, `target: "ES2022"`, `module: "ESNext"`, `moduleResolution: "Bundler"`, `types: ["bun"]`, `skipLibCheck: true`, `noEmit: true`, `esModuleInterop: true`, `resolveJsonModule: true`.
 
 No failing test is required: this task is configuration/scaffolding. Its independently testable deliverable is that dependencies install from the committed lockfile and the strict typecheck runs cleanly.
 
-- [ ] **Step 1: Write `package.json`**
+- [x] **Step 1: Write `package.json`**
 
 ```json
 {
@@ -42,7 +42,7 @@ No failing test is required: this task is configuration/scaffolding. Its indepen
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test ./.opencode ./.agents ./scripts ./test",
+    "test": "bun test ./.opencode ./skills ./scripts ./test",
     "check-package": "bun scripts/check-package.ts",
     "mark-internal-skills": "bun scripts/mark-internal-skills.ts"
   },
@@ -56,7 +56,7 @@ No failing test is required: this task is configuration/scaffolding. Its indepen
 
 `0.1.0` is the initial single version; it is the only version in the product. The `!.opencode/plugins/permission-optimizer/test/` negation is the `files`-whitelist exclusion of `test/` required by the spec (verified against `npm pack --dry-run --json`).
 
-- [ ] **Step 2: Write `tsconfig.json`**
+- [x] **Step 2: Write `tsconfig.json`**
 
 ```json
 {
@@ -73,8 +73,8 @@ No failing test is required: this task is configuration/scaffolding. Its indepen
   },
   "include": [
     ".opencode/plugins/**/*.ts",
-    ".agents/skills/opencode-permissions/**/*.ts",
-    ".agents/skills/opencode-permission-optimizer/**/*.ts",
+    "skills/opencode-permissions/**/*.ts",
+    "skills/opencode-permission-optimizer/**/*.ts",
     "scripts/**/*.ts",
     "test/**/*.ts"
   ],
@@ -82,9 +82,9 @@ No failing test is required: this task is configuration/scaffolding. Its indepen
 }
 ```
 
-`.opencode/plugins/**/*.ts` intentionally includes the pre-existing, unmodified `mistral-3rd-party` plugin, which was verified strict-clean. `.claude/**` is excluded because those skill directories are symlinks into `.agents/skills/`.
+`.opencode/plugins/**/*.ts` intentionally includes the pre-existing, unmodified `mistral-3rd-party` plugin, which was verified strict-clean. `.claude/**` is excluded because those skill directories are symlinks into `skills/` and `.agents/skills/`.
 
-- [ ] **Step 3: Write `.github/workflows/ci.yml`**
+- [x] **Step 3: Write `.github/workflows/ci.yml`**
 
 ```yaml
 name: CI
@@ -112,21 +112,21 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
       - name: Test
-        run: bun test ./.opencode ./.agents ./scripts ./test
+        run: bun test ./.opencode ./skills ./scripts ./test
       - name: Check package contents
         run: bun run check-package
 ```
 
 Both third-party actions are pinned by full 40-character commit SHA (resolved with `gh api` at plan-authoring time).
 
-The test command passes explicit `./`-prefixed roots because Bun 1.3.14's test runner excludes hidden directories (those starting with `.`) from default discovery and offers no opt-out (verified against the Bun "Test discovery → Exclusions" docs). Passing `./.opencode`, `./.agents`, `./scripts` and `./test` as positional roots bypasses that default so every ported test actually runs. Every task's focused test command uses the same `./` prefix.
+The test command passes explicit `./`-prefixed roots because Bun 1.3.14's test runner excludes hidden directories (those starting with `.`) from default discovery and offers no opt-out (verified against the Bun "Test discovery → Exclusions" docs). Passing `./.opencode`, `./skills`, `./scripts` and `./test` as positional roots bypasses that default so the plugin tests under the hidden `.opencode/` directory run. Every task's focused test command uses the same `./` prefix.
 
-- [ ] **Step 4: Generate and commit the lockfile**
+- [x] **Step 4: Generate and commit the lockfile**
 
 Run: `bun install`
 Expected: resolves `@opencode-ai/plugin@1.19.5`, `@types/bun@1.4.4`, `typescript@6.0.3`; writes `bun.lock`; exits 0.
 
-- [ ] **Step 5: Verify the scaffold**
+- [x] **Step 5: Verify the scaffold**
 
 Run: `bun install --frozen-lockfile`
 Expected: exits 0 with no changes to `bun.lock`.
@@ -139,7 +139,7 @@ Expected: output contains both `node_modules/` and `.temp/`. Make **no** edit to
 
 CI note (stated fact, not an open question): the workflow's `bun test` and `bun run check-package` steps turn green at Task 02, which adds the first test file and the `check-package` script. Until then the draft PR's CI is expected to be red; no task changes behavior to accommodate this.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json tsconfig.json bun.lock .github/workflows/ci.yml

@@ -1,6 +1,6 @@
 # Task 02: Package-content check
 
-**Objective:** Add the pure `npm pack` assertion with its unit test so CI can prove the package whitelist ships the plugin entry, schema and migrations while excluding skills, tests, fixtures and plans.
+**Objective:** Add the pure `npm pack` assertion with its unit test so CI can prove the package ships the plugin entry, schema and migrations and nothing outside the allowed folders and extensions.
 
 **Unit:** 1 (Scaffold). Depends on Task 01 for `package.json`, `tsconfig.json`, and the `check-package` script name.
 
@@ -9,14 +9,14 @@
 - Test: `scripts/test/check-package.test.ts`
 
 **Interfaces:**
-- Consumes: `package.json`'s `files` array (declared whitelist) and `bun run check-package` (script from Task 01).
+- Consumes: `package.json`'s `files` array (the declared files list) and `bun run check-package` (script from Task 01).
 - Produces:
   - `export interface PackageContents { packedPaths: string[]; declaredFiles: string[] }`
   - `export function assertPackageContents(contents: PackageContents): void` — throws an `Error` naming the offending declaration or packed path; returns `void` when the contents are valid. Used by the CLI and by the unit test.
 
 This is a behavior-changing task, so it follows the write-failing-test → verify-fail → implement → verify-pass → commit cycle.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `scripts/test/check-package.test.ts`:
 
@@ -47,34 +47,41 @@ describe("package contents", () => {
     expect(() => assertPackageContents(VALID)).not.toThrow()
   })
 
-  it("rejects a package whose whitelist omits the license", () => {
+  it("rejects a package whose files list omits the license", () => {
     const declaredFiles = VALID.declaredFiles.filter((entry) => entry !== "LICENSE")
     expect(() => assertPackageContents({ ...VALID, declaredFiles })).toThrow(
-      "package files whitelist is missing LICENSE",
+      "package files list is missing LICENSE",
     )
   })
 
-  it("rejects a package that ships a toolkit skill", () => {
-    const packedPaths = [...VALID.packedPaths, ".agents/skills/opencode-permissions/SKILL.md"]
+  it("rejects a package that ships a file outside the plugin directory", () => {
+    const packedPaths = [...VALID.packedPaths, "skills/opencode-permissions/SKILL.md"]
     expect(() => assertPackageContents({ ...VALID, packedPaths })).toThrow(
-      "npm pack includes excluded files: .agents/skills/opencode-permissions/SKILL.md",
+      "npm pack includes files outside the allowed folders and extensions: skills/opencode-permissions/SKILL.md",
     )
   })
 
-  it("rejects a package that ships a test file", () => {
+  it("rejects a package that ships a test file from the plugin directory", () => {
     const packedPaths = [
       ...VALID.packedPaths,
       ".opencode/plugins/permission-optimizer/test/store.test.ts",
     ]
     expect(() => assertPackageContents({ ...VALID, packedPaths })).toThrow(
-      "npm pack includes excluded files: .opencode/plugins/permission-optimizer/test/store.test.ts",
+      "npm pack includes files outside the allowed folders and extensions: .opencode/plugins/permission-optimizer/test/store.test.ts",
     )
   })
 
-  it("rejects a package that ships plan documents", () => {
-    const packedPaths = [...VALID.packedPaths, "plans/2026-11-06-port-opencode-permission-tooling/spec.md"]
+  it("rejects a package that ships a helper from the repository test directory", () => {
+    const packedPaths = [...VALID.packedPaths, "test/helpers/source-import-specifiers.ts"]
     expect(() => assertPackageContents({ ...VALID, packedPaths })).toThrow(
-      "npm pack includes excluded files: plans/2026-11-06-port-opencode-permission-tooling/spec.md",
+      "npm pack includes files outside the allowed folders and extensions: test/helpers/source-import-specifiers.ts",
+    )
+  })
+
+  it("rejects a package that ships a plugin directory file that is neither source, SQL nor documentation", () => {
+    const packedPaths = [...VALID.packedPaths, ".opencode/plugins/permission-optimizer/notes.txt"]
+    expect(() => assertPackageContents({ ...VALID, packedPaths })).toThrow(
+      "npm pack includes files outside the allowed folders and extensions: .opencode/plugins/permission-optimizer/notes.txt",
     )
   })
 
@@ -96,12 +103,12 @@ describe("package contents", () => {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `bun test ./scripts/test/check-package.test.ts`
 Expected: FAIL — `error: Cannot find module '../check-package'`.
 
-- [ ] **Step 3: Write the minimal implementation**
+- [x] **Step 3: Write the minimal implementation**
 
 Create `scripts/check-package.ts`:
 
@@ -120,58 +127,54 @@ const REQUIRED_DECLARATIONS: readonly string[] = [
   "README.md",
   "LICENSE",
 ]
-const FORBIDDEN_PREFIXES: readonly string[] = [
-  ".agents/",
-  ".claude/",
-  ".opencode/agents/",
-  "plans/",
-  ".temp/",
-  "scripts/",
-  "docs/",
-  ".github/",
-]
+const PLUGIN_DIRECTORY = ".opencode/plugins/permission-optimizer/"
+const ROOT_FILES: readonly string[] = ["package.json", "README.md", "LICENSE"]
+const PLUGIN_FILE_EXTENSIONS: readonly string[] = [".ts", ".sql", ".md"]
+const TEST_DIRECTORY_NAME = "test"
 
-/** The paths npm would pack and the `files` whitelist declared in package.json. */
+/** The paths npm would pack and the `files` list declared in package.json. */
 export interface PackageContents {
   packedPaths: string[]
   declaredFiles: string[]
 }
 
-function isForbidden(path: string): boolean {
-  if (
-    path.endsWith(".test.ts") ||
-    path.endsWith(".test.mjs") ||
-    path.endsWith(".test.js") ||
-    path.endsWith("spec.md")
-  ) {
+function isAllowed(path: string): boolean {
+  if (path === ENTRY_PATH || ROOT_FILES.includes(path)) {
     return true
   }
-  if (path.includes("/test/") || path.includes("/fixtures/") || path.includes("/plans/")) {
-    return true
+  if (!path.startsWith(PLUGIN_DIRECTORY)) {
+    return false
   }
-  return FORBIDDEN_PREFIXES.some((prefix) => path.startsWith(prefix))
+  const relativePath = path.slice(PLUGIN_DIRECTORY.length)
+  const directoryNames = relativePath.split("/").slice(0, -1)
+  if (directoryNames.includes(TEST_DIRECTORY_NAME)) {
+    return false
+  }
+  return PLUGIN_FILE_EXTENSIONS.some((extension) => relativePath.endsWith(extension))
 }
 
 /**
- * Assert that a package's files whitelist declares the plugin entry, plugin
+ * Assert that a package's files list declares the plugin entry, plugin
  * directory, README and LICENSE, and that `npm pack --dry-run --json` would
- * ship no skills, tests, fixtures, plan documents, scripts, or docs. When the
- * plugin entry is packed, the schema and at least one migration must be packed
- * with it. Throws an Error naming the first offending declaration or path.
+ * ship only `package.json`, `README.md`, `LICENSE`, the plugin entry, and
+ * `.ts`, `.sql` and `.md` files in the plugin directory outside its `test/`
+ * directories. When the plugin entry is packed, the schema and at least one
+ * migration must be packed with it. Throws an Error naming the first
+ * offending declaration or all disallowed paths.
  */
 export function assertPackageContents(contents: PackageContents): void {
   const { packedPaths, declaredFiles } = contents
   for (const required of REQUIRED_DECLARATIONS) {
     if (!declaredFiles.includes(required)) {
-      throw new Error(`package files whitelist is missing ${required}`)
+      throw new Error(`package files list is missing ${required}`)
     }
   }
   if (!packedPaths.includes("package.json")) {
     throw new Error("npm pack did not include package.json")
   }
-  const offenders = packedPaths.filter(isForbidden)
+  const offenders = packedPaths.filter((path) => !isAllowed(path))
   if (offenders.length > 0) {
-    throw new Error(`npm pack includes excluded files: ${offenders.join(", ")}`)
+    throw new Error(`npm pack includes files outside the allowed folders and extensions: ${offenders.join(", ")}`)
   }
   if (packedPaths.includes(ENTRY_PATH)) {
     if (!packedPaths.includes(SCHEMA_PATH)) {
@@ -208,31 +211,31 @@ if (import.meta.main) {
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `bun test ./scripts/test/check-package.test.ts`
-Expected: PASS — 7 tests, 0 failures.
+Expected: PASS — 8 tests, 0 failures.
 
 Run: `bun run check-package`
-Expected: PASS — prints `package contents: ok`. The whitelist declarations exist from Task 01; the packed list contains only `package.json` (and `LICENSE`, which already exists at the root), and no excluded files. The schema-completeness invariant is inactive until Task 05 ships the entry, so the command is green from this task onward.
+Expected: PASS — prints `package contents: ok`. The files-list declarations exist from Task 01; the packed list contains only `package.json` and `LICENSE` (which already exists at the root), both allowed root files. The schema-completeness invariant is inactive until Task 05 ships the entry, so the command is green from this task onward.
 
-- [ ] **Step 5: Typecheck**
+- [x] **Step 5: Typecheck**
 
 Run: `bun run typecheck`
 Expected: exit 0.
 
-- [ ] **Step 6: Record the changed-code audit tables (task acceptance)**
+- [x] **Step 6: Record the changed-code audit tables (task acceptance)**
 
 Exported declarations:
 
 | Declaration | File / lines | Contract | Invariants / errors | JSDoc |
 |---|---|---|---|---|
-| `PackageContents` | `scripts/check-package.ts` interface | Packed paths plus declared whitelist | none | above the interface |
-| `assertPackageContents` | `scripts/check-package.ts` function | Validates whitelist declarations, packed exclusions, manifest presence, schema completeness | Throws `Error` naming the first offender; returns `void` on success | above the function |
+| `PackageContents` | `scripts/check-package.ts` interface | Packed paths plus declared files list | none | above the interface |
+| `assertPackageContents` | `scripts/check-package.ts` function | Validates files-list declarations, allowed packed folders and extensions, manifest presence, schema completeness | Throws `Error` naming the first offender; returns `void` on success | above the function |
 
 Long bodies (over 40 physical lines): none. `assertPackageContents` and `main` are each under 40 lines; state this explicitly in the worker report.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add scripts/check-package.ts scripts/test/check-package.test.ts
