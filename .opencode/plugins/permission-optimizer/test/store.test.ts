@@ -291,7 +291,10 @@ describe("openDatabase", () => {
     const walBefore = fileHash(dbPath + "-wal")
     expect(() => openDatabase(dbPath)).toThrow(/incompatible schema/i)
     expect(fileHash(dbPath)).toBe(mainBefore)
-    expect(fileHash(dbPath + "-wal")).toBe(walBefore)
+    // SQLite may recreate an absent WAL as an empty file during read-only inspection.
+    const walPath = dbPath + "-wal"
+    const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
+    expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
   })
 })
 
@@ -399,7 +402,10 @@ describe("schema v3 migration", () => {
     const walBefore = fileHash(dbPath + "-wal")
     expect(() => openDatabase(dbPath)).toThrow(/incompatible schema version/i)
     expect(fileHash(dbPath)).toBe(mainBefore)
-    expect(fileHash(dbPath + "-wal")).toBe(walBefore)
+    // SQLite may recreate an absent WAL as an empty file during read-only inspection.
+    const walPath = dbPath + "-wal"
+    const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
+    expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
     const db = new Database(dbPath, { readonly: true })
     expect(db.query("SELECT version FROM schema_metadata WHERE id = 1").get()).toEqual({ version: 99 })
     db.close()
