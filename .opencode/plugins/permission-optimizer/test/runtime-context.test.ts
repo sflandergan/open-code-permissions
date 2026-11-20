@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { resolveDatabasePath } from "../database-path"
-import { normalizeOrigin } from "../repository-identity"
 import { createAgentResolver, resolveRepositoryIdentityFromGit } from "../runtime-context"
 
 describe("resolveDatabasePath", () => {

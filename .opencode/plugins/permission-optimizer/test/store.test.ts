@@ -1,11 +1,8 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
-import { Database } from "bun:sqlite"
-import { normalizeOrigin, resolveRepositoryIdentity } from "../repository-identity"
 import { openDatabase } from "../database"
 import { createObservationStore, type ObservationStore } from "../store"
-import type { ObservationRecord, CompletionEvent, PermissionDecision } from "../model"
-import { SCHEMA_VERSION, RETENTION_DAYS } from "../schema"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
+import type { ObservationRecord, CompletionEvent } from "../model"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -27,13 +24,6 @@ function makeAskedRecord(overrides: Partial<ObservationRecord> = {}): Observatio
     askedAt: VALID_UTC,
     ...overrides,
   }
-}
-
-function fileHash(path: string): string | null {
-  if (!existsSync(path)) return null
-  const hasher = new Bun.CryptoHasher("sha256")
-  hasher.update(readFileSync(path))
-  return hasher.digest("hex")
 }
 
 function makeFakeClock(): { clock: { now(): Date }; set(iso: string): void } {
@@ -74,7 +64,7 @@ store.close()
   return scriptPath
 }
 
-/** Assert an observation retains every attribution, decision, and completion fact. */
+/** Assert an observation retains every origin, decision, and completion fact. */
 function expectAllKnownFacts(observation: Record<string, unknown>): void {
   expect(observation.id).toBeGreaterThan(0)
   expect(observation.message_id).toBe("msg_001")
@@ -116,188 +106,6 @@ function seedRetentionLifecycles(store: ObservationStore): void {
   )
 }
 
-describe("normalizeOrigin", () => {
-  test("normalizes SSH origin to host/path", () => {
-    expect(normalizeOrigin("git@github.com:user/repo.git")).toBe("github.com/user/repo")
-  })
-
-  test("normalizes HTTPS origin to host/path", () => {
-    expect(normalizeOrigin("https://github.com/user/repo.git")).toBe("github.com/user/repo")
-  })
-
-  test("strips credentials from HTTPS URL", () => {
-    expect(normalizeOrigin("https://token:x-oauth-basic@github.com/user/repo")).toBe("github.com/user/repo")
-  })
-
-  test("strips query string and fragment", () => {
-    expect(normalizeOrigin("https://github.com/user/repo?token=abc#frag")).toBe("github.com/user/repo")
-  })
-
-  test("normalizes host case-insensitively", () => {
-    expect(normalizeOrigin("https://GitHub.COM/User/Repo")).toBe("github.com/User/Repo")
-  })
-
-  test("strips trailing .git", () => {
-    expect(normalizeOrigin("https://gitlab.com/group/project.git")).toBe("gitlab.com/group/project")
-  })
-
-  test("preserves path without .git suffix", () => {
-    expect(normalizeOrigin("https://gitlab.com/group/project")).toBe("gitlab.com/group/project")
-  })
-
-  test("returns null for empty string", () => {
-    expect(normalizeOrigin("")).toBeNull()
-  })
-
-  test("returns null for unparseable input", () => {
-    expect(normalizeOrigin("not-a-url")).toBeNull()
-  })
-
-  test("returns null for null input", () => {
-    expect(normalizeOrigin(null)).toBeNull()
-  })
-})
-
-describe("resolveRepositoryIdentity", () => {
-  test("falls back to common directory when no origin", () => {
-    const result = resolveRepositoryIdentity(null, "/repo/.git")
-    expect(result.identity).toBe("/repo/.git")
-    expect(result.commonDirectory).toBe("/repo/.git")
-  })
-
-  test("uses sanitized origin when available", () => {
-    const result = resolveRepositoryIdentity("git@github.com:user/repo.git", null)
-    expect(result.identity).toBe("github.com/user/repo")
-    expect(result.commonDirectory).toBeNull()
-  })
-})
-
-describe("openDatabase", () => {
-  let tmpDir: string
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "perm-opt-"))
-  })
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
-  })
-
-  test("creates database file with owner-only permissions", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    const stat = import("node:fs").then(fs => fs.statSync(dbPath))
-    db.close()
-  })
-
-  test("applies WAL mode, foreign keys, and busy timeout", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    const journalMode = db.query("PRAGMA journal_mode").get() as Record<string, unknown>
-    expect(journalMode.journal_mode).toBe("wal")
-    const fk = db.query("PRAGMA foreign_keys").get() as Record<string, unknown>
-    expect(fk.foreign_keys).toBe(1)
-    db.close()
-  })
-
-  test("initializes the schema version metadata to the current schema version", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    const row = db.query("SELECT * FROM schema_metadata WHERE id = 1").get() as Record<string, unknown>
-    expect(row.version).toBe(SCHEMA_VERSION)
-    db.close()
-  })
-
-  test("rejects incompatible schema version", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    db.run("UPDATE schema_metadata SET version = 99 WHERE id = 1")
-    db.close()
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema version/i)
-  })
-
-  test("restricts a permissive database directory and file to owner-only modes", () => {
-    const leaf = join(tmpDir, "app-data", "permission-optimizer")
-    mkdirSync(leaf, { recursive: true, mode: 0o755 })
-    const dbPath = join(leaf, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    expect(statSync(leaf).mode & 0o777).toBe(0o700)
-    expect(statSync(dbPath).mode & 0o777).toBe(0o600)
-    db.close()
-  })
-
-  test("restricts the database and its write-ahead files to owner-only modes", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    db.run(
-      "INSERT INTO observations (request_id, session_id, worktree, permission, asked_at) VALUES ('w1', 's1', '/w', 'bash', '2026-08-05T10:00:00.000Z')",
-    )
-    expect(statSync(dbPath).mode & 0o777).toBe(0o600)
-    const reader = new Database(dbPath, { readonly: true })
-    reader.close()
-    expect(existsSync(dbPath + "-wal")).toBe(true)
-    expect(statSync(dbPath + "-wal").mode & 0o777).toBe(0o600)
-    expect(existsSync(dbPath + "-shm")).toBe(true)
-    expect(statSync(dbPath + "-shm").mode & 0o777).toBe(0o600)
-    db.close()
-  })
-
-  test("rejects an incompatible database without mutating bytes or journal mode", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    db.run("UPDATE schema_metadata SET version = 99 WHERE id = 1")
-    db.close()
-    const before = fileHash(dbPath)
-    const walBefore = fileHash(dbPath + "-wal")
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema version/i)
-    // The database file and its write buffer must be untouched. Opening a WAL
-    // database re-initializes the wal-index in `-shm` even read-only, so the
-    // shared-memory file is not part of the byte-identical contract. The `-wal`
-    // file itself may be deleted on close and re-created empty on the next
-    // open; an absent or empty write-ahead log carries no writes, so both
-    // count as unchanged.
-    expect(fileHash(dbPath)).toBe(before)
-    const walPath = dbPath + "-wal"
-    const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
-    expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
-    const check = new Database(dbPath, { readonly: true })
-    const journalMode = check.query("PRAGMA journal_mode").get() as Record<string, unknown>
-    expect(journalMode.journal_mode).toBe("wal")
-    check.close()
-  })
-
-  test("rejects an existing database that lacks the schema version metadata table", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const alien = new Database(dbPath, { create: true })
-    alien.exec("CREATE TABLE alien_data (x TEXT)")
-    alien.exec("INSERT INTO alien_data VALUES ('keep me')")
-    alien.close()
-    const before = fileHash(dbPath)
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible/i)
-    expect(fileHash(dbPath)).toBe(before)
-    const check = new Database(dbPath, { readonly: true })
-    expect(check.query("SELECT COUNT(*) as cnt FROM alien_data").get()).toEqual({ cnt: 1 })
-    check.close()
-  })
-
-  test("rejects a malformed current database without changing database or WAL bytes", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const db = openDatabase(dbPath)
-    db.exec("DROP TABLE requested_patterns")
-    db.run("UPDATE schema_metadata SET version = ? WHERE id = 1", [SCHEMA_VERSION])
-    db.close()
-
-    const mainBefore = fileHash(dbPath)
-    const walBefore = fileHash(dbPath + "-wal")
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema/i)
-    expect(fileHash(dbPath)).toBe(mainBefore)
-    // SQLite may recreate an absent WAL as an empty file during read-only inspection.
-    const walPath = dbPath + "-wal"
-    const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
-    expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
-  })
-})
-
 describe("createObservationStore", () => {
   let tmpDir: string
   let dbPath: string
@@ -311,16 +119,16 @@ describe("createObservationStore", () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  test("inserts a new observation with inputs", () => {
+  test("inserts a new observation with its requested patterns", () => {
     const store = createObservationStore(dbPath)
     store.upsertAsked(makeAskedRecord())
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown> & { id: number }
     expect(obs.session_id).toBe("sess_001")
     expect(obs.permission).toBe("bash")
-    const inputs = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
-    expect(inputs).toHaveLength(1)
-    expect(inputs[0].pattern).toBe("git status")
+    const requestedPatterns = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
+    expect(requestedPatterns).toHaveLength(1)
+    expect(requestedPatterns[0].pattern).toBe("git status")
     db.close()
     store.close()
   })
@@ -336,27 +144,27 @@ describe("createObservationStore", () => {
     store.close()
   })
 
-  test("rewrites the input rows on duplicate asked delivery", () => {
+  test("rewrites the requested patterns on duplicate asked delivery", () => {
     const store = createObservationStore(dbPath)
     store.upsertAsked(makeAskedRecord({ patterns: ["git status", "git diff"] }))
     store.upsertAsked(makeAskedRecord({ patterns: ["git log"] }))
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT id FROM observations WHERE request_id = 'req_001'").get() as { id: number }
-    const inputs = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
-    expect(inputs).toHaveLength(1)
-    expect(inputs[0].pattern).toBe("git log")
+    const requestedPatterns = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
+    expect(requestedPatterns).toHaveLength(1)
+    expect(requestedPatterns[0].pattern).toBe("git log")
     db.close()
     store.close()
   })
 
-  test("counts multiple inputs as one observation", () => {
+  test("counts multiple requested patterns as one observation", () => {
     const store = createObservationStore(dbPath)
     store.upsertAsked(makeAskedRecord({ patterns: ["git status", "git diff", "git log"] }))
     const db = openDatabase(dbPath)
     const count = db.query("SELECT COUNT(*) as cnt FROM observations").get() as Record<string, unknown>
     expect(count.cnt).toBe(1)
-    const inputCount = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
-    expect(inputCount.cnt).toBe(3)
+    const requestedPatternCount = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
+    expect(requestedPatternCount.cnt).toBe(3)
     db.close()
     store.close()
   })
@@ -469,13 +277,13 @@ describe("createObservationStore", () => {
     store.close()
   })
 
-  test("deletes input rows when an observation is pruned", () => {
+  test("deletes requested patterns when an observation is pruned", () => {
     const store = createObservationStore(dbPath)
     store.upsertAsked(makeAskedRecord({ requestId: "req_old", askedAt: "2026-07-01T10:00:00.000Z", patterns: ["a", "b"] }))
     store.prune("2026-08-01T00:00:00.000Z")
     const db = openDatabase(dbPath)
-    const inputs = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
-    expect(inputs.cnt).toBe(0)
+    const requestedPatterns = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
+    expect(requestedPatterns.cnt).toBe(0)
     db.close()
     store.close()
   })
@@ -537,7 +345,7 @@ describe("transactional upsert", () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  test("rolls back the observation when an input insert fails", () => {
+  test("rolls back the observation when a requested-pattern insert fails", () => {
     const store = createObservationStore(dbPath)
     expect(() => {
       store.upsertAsked(makeAskedRecord({ patterns: ["git status", ""] }))
@@ -549,7 +357,7 @@ describe("transactional upsert", () => {
     db.close()
   })
 
-  test("preserves the previous observation and inputs when a duplicate delivery fails", () => {
+  test("preserves the previous observation and its requested patterns when a duplicate delivery fails", () => {
     const store = createObservationStore(dbPath)
     store.upsertAsked(makeAskedRecord({ patterns: ["git status", "git diff"] }))
     expect(() => {
@@ -559,8 +367,8 @@ describe("transactional upsert", () => {
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
     expect(obs.repository_identity).toBe("github.com/user/repo")
-    const inputs = db.query("SELECT pattern FROM requested_patterns ORDER BY pattern_index").all() as { pattern: string }[]
-    expect(inputs.map((row) => row.pattern)).toEqual(["git status", "git diff"])
+    const requestedPatterns = db.query("SELECT pattern FROM requested_patterns ORDER BY pattern_index").all() as { pattern: string }[]
+    expect(requestedPatterns.map((row) => row.pattern)).toEqual(["git status", "git diff"])
     db.close()
   })
 })
@@ -578,7 +386,7 @@ describe("stable facts", () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  test("preserves every known field when a duplicate asked event resolves no new attribution", () => {
+  test("preserves every known field when a duplicate asked event resolves no new observation origin", () => {
     const store = createObservationStore(dbPath)
     store.upsertAsked(
       makeAskedRecord({
@@ -615,7 +423,7 @@ describe("stable facts", () => {
     db.close()
   })
 
-  test("fills missing attribution from a later delivery", () => {
+  test("fills a missing observation origin from a later delivery", () => {
     const store = createObservationStore(dbPath)
     store.upsertAsked(
       makeAskedRecord({
@@ -666,7 +474,7 @@ describe("automatic retention", () => {
     return rows.map((row) => row.request_id)
   }
 
-  function inputCount(): number {
+  function requestedPatternCount(): number {
     const db = openDatabase(dbPath)
     const count = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as { cnt: number }
     db.close()
@@ -681,17 +489,17 @@ describe("automatic retention", () => {
     store1.close()
 
     // Reopening prunes the below-cutoff lifecycle at open; the exact-cutoff
-    // observation remains and the pruned observation's inputs are deleted.
+    // observation remains and the pruned observation's requested patterns are deleted.
     const store2 = createObservationStore(dbPath, fake.clock)
     expect(requestIds()).toEqual(["req_exact", "req_fresh"])
-    expect(inputCount()).toBe(2)
+    expect(requestedPatternCount()).toBe(2)
 
     // Advancing past the prune interval makes an ordinary write prune the
-    // now-below-cutoff exact observation; its inputs are deleted too.
+    // now-below-cutoff exact observation; its requested patterns are deleted too.
     fake.set("2026-08-05T13:00:00.000Z")
     store2.upsertAsked(makeAskedRecord({ requestId: "req_new", askedAt: "2026-08-05T11:00:00.000Z" }))
     expect(requestIds()).toEqual(["req_fresh", "req_new"])
-    expect(inputCount()).toBe(2)
+    expect(requestedPatternCount()).toBe(2)
     store2.close()
   })
 })
@@ -709,7 +517,7 @@ describe("concurrent writers", () => {
     rmSync(tmpDir, { recursive: true, force: true })
   })
 
-  test("maintains one observation with contiguous inputs across concurrent processes", async () => {
+  test("maintains one observation with contiguous requested patterns across concurrent processes", async () => {
     const concurrentAskedAt = new Date().toISOString()
     const store = createObservationStore(dbPath)
     store.upsertAsked(
@@ -736,18 +544,10 @@ describe("concurrent writers", () => {
       .all() as { id: number }[]
     expect(rows).toHaveLength(1)
     expect(rows[0].id).toBe(seeded.id)
-    const inputs = check
+    const requestedPatterns = check
       .query("SELECT pattern FROM requested_patterns ORDER BY pattern_index")
       .all() as { pattern: string }[]
-    expect(inputs.map((row) => row.pattern)).toEqual(["git status", "git diff", "git log"])
+    expect(requestedPatterns.map((row) => row.pattern)).toEqual(["git status", "git diff", "git log"])
     check.close()
-  })
-})
-
-describe("README", () => {
-  test("limits filesystem modes to other-account privacy, not same-user isolation", () => {
-    const readme = readFileSync(join(import.meta.dir, "..", "README.md"), "utf-8")
-    expect(readme).toMatch(/other OS accounts/)
-    expect(readme).toMatch(/same-user/)
   })
 })

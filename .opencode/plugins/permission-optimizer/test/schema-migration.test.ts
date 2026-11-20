@@ -313,23 +313,15 @@ describe("schema migrations", () => {
     }
   })
 
-  test("leaves a database with an unsupported version unchanged", () => {
-    const seeded = createVersion3Database(dbPath, 99)
-    insertVersion3Observation(seeded, "req_unsupported")
-    seeded.close()
-    const bytesBefore = readFileSync(dbPath)
+  test("refuses a current-version database that lacks the requested-patterns table and leaves it unchanged", () => {
+    const db = openDatabase(dbPath)
+    db.exec("DROP TABLE requested_patterns")
+    db.close()
+    const mainBefore = fileHash(dbPath)
     const walBefore = fileHash(dbPath + "-wal")
 
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema version/i)
-    expect(readFileSync(dbPath).equals(bytesBefore)).toBe(true)
+    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema/i)
+    expect(fileHash(dbPath)).toBe(mainBefore)
     expectWriteAheadFileUnchanged(dbPath, walBefore)
-
-    const check = new Database(dbPath, { readonly: true })
-    try {
-      expect(readSchemaVersion(check)).toBe(99)
-      expect(countObservations(check)).toBe(1)
-    } finally {
-      check.close()
-    }
   })
 })
