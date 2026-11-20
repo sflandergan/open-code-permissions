@@ -45,7 +45,7 @@ JSDoc for `ObservationOrigin`: "Repository identity, agent, message ID and tool 
 - [ ] **Step 6: Test names**
   - `event-adapter.test.ts` "adapts a valid asked event with exact normalized values" → "normalizes a valid asked event" (R09).
   - `event-adapter.test.ts` "accepts a payload delivered under the event's data field with exact values" → "reads the asked payload from the legacy data envelope when properties is absent" (R10).
-  - `permission-event-correlator.test.ts` "records a mismatched automatic reply as unresolved" → "records a once reply to a request already covered by an earlier always reply as unresolved". Add one comment above it: "// A person can answer a sibling request before OpenCode applies the earlier always reply to it." (R11)
+  - `permission-event-correlator.test.ts` "records a mismatched automatic reply as unresolved" → "records an unexpected reply to a request covered by an earlier always reply as unresolved". Keep the classification branch it covers (owner decision: defensive handling). Add one comment above the test: "// OpenCode answers requests covered by an earlier always reply itself; any other reply on such a request is unexpected and is recorded as unresolved rather than counted as a decision." Add the same constraint as one sentence in the JSDoc of the cascade-classification function. (R11)
 
 - [ ] **Step 7: Verify**
 
