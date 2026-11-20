@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Database } from "bun:sqlite"
-import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { openDatabase } from "../database"
@@ -175,6 +175,25 @@ function countObservations(db: Database): number {
   return (db.query("SELECT COUNT(*) AS cnt FROM observations").get() as { cnt: number }).cnt
 }
 
+function fileHash(path: string): string | null {
+  if (!existsSync(path)) return null
+  const hasher = new Bun.CryptoHasher("sha256")
+  hasher.update(readFileSync(path))
+  return hasher.digest("hex")
+}
+
+/**
+ * Asserts that refusing to open the database left its write-ahead file
+ * unchanged. SQLite may recreate an absent WAL as an empty file during
+ * read-only inspection, so an absent-before log that is absent or empty now
+ * counts as unchanged.
+ */
+function expectWriteAheadFileUnchanged(dbPath: string, walBefore: string | null): void {
+  const walPath = dbPath + "-wal"
+  const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
+  expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
+}
+
 describe("schema migrations", () => {
   let tmpDir: string
   let dbPath: string
@@ -255,9 +274,11 @@ describe("schema migrations", () => {
     insertVersion3Observation(seeded, "req_v1_checkpoint")
     seeded.close()
     const bytesBefore = readFileSync(dbPath)
+    const walBefore = fileHash(dbPath + "-wal")
 
     expect(() => openDatabase(dbPath)).toThrow(/incompatible schema/i)
     expect(readFileSync(dbPath).equals(bytesBefore)).toBe(true)
+    expectWriteAheadFileUnchanged(dbPath, walBefore)
 
     const check = new Database(dbPath, { readonly: true })
     try {
@@ -276,9 +297,11 @@ describe("schema migrations", () => {
     seeded.exec("DROP TABLE observation_inputs")
     seeded.close()
     const bytesBefore = readFileSync(dbPath)
+    const walBefore = fileHash(dbPath + "-wal")
 
     expect(() => openDatabase(dbPath)).toThrow()
     expect(readFileSync(dbPath).equals(bytesBefore)).toBe(true)
+    expectWriteAheadFileUnchanged(dbPath, walBefore)
 
     const check = new Database(dbPath, { readonly: true })
     try {
@@ -295,9 +318,11 @@ describe("schema migrations", () => {
     insertVersion3Observation(seeded, "req_unsupported")
     seeded.close()
     const bytesBefore = readFileSync(dbPath)
+    const walBefore = fileHash(dbPath + "-wal")
 
     expect(() => openDatabase(dbPath)).toThrow(/incompatible schema version/i)
     expect(readFileSync(dbPath).equals(bytesBefore)).toBe(true)
+    expectWriteAheadFileUnchanged(dbPath, walBefore)
 
     const check = new Database(dbPath, { readonly: true })
     try {
