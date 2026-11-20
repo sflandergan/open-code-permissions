@@ -4,7 +4,7 @@
 
 **Goal:** Port the OpenCode permission tooling (plugin `permission-optimizer`, skills `opencode-permissions` and `opencode-permission-optimizer`, and agent `opencode-permissions`) from the sister repository `bikes-local` into this repository as one versioned, publishable-but-private npm package, two skills CLI skills, and a copy-in agent, verified by GitHub Actions.
 
-**Architecture:** The four product parts are delivered as one npm package (`opencode-permissions`) whose `exports["."]` is the single-export plugin entry OpenCode auto-loads, plus two self-contained published skills under `skills/` (toolkit skills stay under `.agents/skills/`) and one copy-in agent under `.opencode/agents/`. The plugin owns the SQLite schema (version 3); the optimizer skill's reader is the only other consumer of that schema. Root `scripts/` hold repository-local guards. A static boundary test enforces that no production import crosses the plugin, skills, or scripts areas; a contract test is the only test that imports from both the plugin and a skill.
+**Architecture:** The four product parts are delivered as one npm package (`opencode-permissions`) whose `exports["."]` is the single-export plugin entry OpenCode auto-loads, plus two self-contained published skills under `skills/` (toolkit skills stay under `.agents/skills/`) and one copy-in agent under `.opencode/agents/`. The plugin owns the SQLite schema (version 4); the optimizer skill's reader is the only other consumer of that schema. Root `scripts/` hold repository-local guards. A static boundary test enforces that no production import crosses the plugin, skills, or scripts areas; a contract test is the only test that imports from both the plugin and a skill.
 
 **Tech Stack:** TypeScript (`strict`), Bun 1.3.14 (runtime, package manager, `bun:test`), `bun:sqlite`, `@opencode-ai/plugin` (development, types only), `@types/bun`, TypeScript `~6.0.3`, `npm pack --dry-run --json`, Bash wrappers, GitHub Actions.
 
@@ -19,8 +19,8 @@ These are the spec's project-wide requirements; every task's requirements implic
 - `@opencode-ai/plugin` and `@types/bun` are development dependencies; the plugin imports only types from the former. Runtime requirement: OpenCode's Bun runtime, for `bun:sqlite`.
 - `files` whitelists the entry, the plugin directory including `schema.sql` and `migrations/*.sql` (read at runtime through `import.meta.dirname`), `README.md` and `LICENSE`, and excludes `test/`.
 - No production file in the plugin, in a skill, or in `scripts/` imports from another of those areas; a test enforces this with a static scan of import specifiers.
-- Each skill directory is self-contained because the skills CLI installs it alone; skills hold no plugin code and the plugin holds no skill code; the small repository-identity logic is intentionally duplicated between the plugin and the optimizer skill.
-- The only shared contract is the SQLite schema (version 3): the plugin owns it; the optimizer skill's reader rejects any other version with an error that names the found and expected versions.
+- Each skill directory is self-contained because the skills CLI installs it alone; skills hold no plugin code and the plugin holds no skill code; the small repository-identity logic is intentionally duplicated between the plugin and the optimizer skill. Exception: `opencode-permission-optimizer` invokes the sibling `opencode-permissions` skill's `scripts/inspect.sh` at `../../opencode-permissions/`, so both skills must be installed side by side.
+- The only shared contract is the SQLite schema (version 4): the plugin owns it; the optimizer skill's reader rejects any other version with an error that names the found and expected versions. Version 4 renames `observation_inputs` → `requested_patterns`, `exact_input` → `pattern`, `input_index` → `pattern_index`. The plugin migrates v1, v2 and v3 databases to v4 in one transaction, preserving every observation and requested pattern. The optimizer reader accepts only version 4.
 - Every `.mjs` becomes strict `.ts` run by Bun; shell wrappers only start `bun <script>.ts` and exit with a clear message when `bun` is not on `PATH`. Consumers of the skills need Bun installed; READMEs say so.
 - `node:sqlite` becomes `bun:sqlite` in the optimizer reader.
 - Report output stays repository-local: each command writes complete JSON to an ignored `.temp/` file and prints only `output file: .temp/<name>`; the caller reads it and deletes that exact file. No `external_directory` grant is needed in consumer repositories.
@@ -31,16 +31,16 @@ These are the spec's project-wide requirements; every task's requirements implic
 - Root `package.json` defines the `typecheck` (`tsc --noEmit`) and `test` scripts required by `AGENTS.md`.
 - Ported TypeScript is audited against `docs/CODING_GUIDELINES.md` with the two changed-code evidence tables (exported declarations; function bodies over 40 lines); both are task acceptance evidence.
 - `.github/workflows/ci.yml` runs on pull requests and pushes to `main` with `permissions: contents: read`; third-party actions are pinned by full commit SHA.
-- `metadata.internal: true` hides a toolkit skill from the skills CLI's normal discovery; the published skills are named in a single file-level constant.
+- `metadata.internal: true` hides a toolkit skill from the skills CLI's normal discovery; published skills are discovered by scanning the top-level `skills/` directory (`PUBLISHED_SKILLS_DIRECTORY` in `scripts/mark-internal-skills.ts`).
 - `docs/TOOLKIT-UPGRADE.md` tells the agent to choose replace, rerun `bun run mark-internal-skills`, then run `bun test`; `AGENTS.md` gains one line pointing to that guide.
-- Non-goals: no change to what the plugin records, how the skills analyze permissions, or the database schema; no `installed-runtime.test.ts`, no `local-smoke.sh`, no Bun workspace, no split into multiple packages, no change to the agentic coding toolkit, no bikes-local provider config / Mistral compatibility plugin / Renovate or UI agents / policy values.
+- Non-goals: no change to what the plugin records or how the skills analyze permissions; no `installed-runtime.test.ts`, no `local-smoke.sh`, no Bun workspace, no split into multiple packages, no change to the agentic coding toolkit, no bikes-local provider config / Mistral compatibility plugin / Renovate or UI agents / policy values.
 - Manual steps after merge, outside the code: require the CI check on `main` in repository settings; file the upstream issue in `agentic-coding-next` asking `setup` to support marking installed skills internal, which would retire `mark-internal-skills`.
 
 ---
 
 ## Docs used
 
-- `plans/2026-11-06-port-opencode-permission-tooling/spec.md` (approved spec; its **Terminology** section is the authoritative glossary: Observation, Published skill, Toolkit skill, Internal skill).
+- `plans/2026-11-06-port-opencode-permission-tooling/spec.md` (approved spec) and `CONTEXT.md` (authoritative domain glossary).
 - `docs/agents/planner.md` (role doc and its load list).
 - `docs/CODING_GUIDELINES.md` (strict TS, JSDoc contracts, 40-line review, file-level constants, changed-code audit tables).
 - `docs/TESTING.md` (`bun:test`, `test/` layout, test naming rules, TDD and behavior-preserving consolidation).
@@ -55,7 +55,7 @@ The spec resolves the two planning forks interactively: one plan with five order
 
 The following are verified repository facts, not open questions:
 
-- `docs/ARCHITECTURE.md`, `CONTEXT-MAP.md`, `docs/contexts/`, `docs/adr/`, and `docs/LOGGING.md`, named by `docs/agents/planner.md`, **do not exist** in this repository (verified by glob). Therefore no bounded-context glossaries, ADRs, architecture guidance, or logging rules add constraints. `/grill-with-docs` is skipped because the docs it would grill against are absent and the spec already defines every domain term the plan uses; `/domain-modeling` is not invoked because the spec's Terminology section is the authoritative glossary and the plan introduces no undefined identifier for a domain concept.
+- `docs/ARCHITECTURE.md`, `CONTEXT-MAP.md`, `docs/contexts/`, `docs/adr/`, and `docs/LOGGING.md`, named by `docs/agents/planner.md`, **do not exist** in this repository (verified by glob). Therefore no bounded-context glossaries, ADRs, architecture guidance, or logging rules add constraints. `/grill-with-docs` is skipped because the docs it would grill against are absent. The root `CONTEXT.md` glossary defines every domain term the plan uses; the plan introduces no undefined identifier for a domain concept.
 - `.gitignore` at `HEAD` already contains `node_modules/` and `.temp/` (verified with `git show HEAD:.gitignore`); the spec's "gains `.temp/`" end state is already satisfied. Task 01 verifies it and makes no edit.
 - The sister repository `bikes-local` is not referenced by path or URL. The controller asks the user once for a local checkout, verifies it is at commit `29ee8718f4ab4a50297f30ceb5ee40e4ad02035a` with a clean tree, and passes it to every port task as `SOURCE_ROOT`. All ported files are copied from that exact revision.
 - This repository already tracks an unrelated OpenCode plugin `.opencode/plugins/mistral-3rd-party.ts` and `mistral-3rd-party/compatibility.ts`; these are **not** ported and are **not** modified. They typecheck cleanly under `strict` (verified), so the root `tsconfig.json` may include all of `.opencode/plugins/**/*.ts`.

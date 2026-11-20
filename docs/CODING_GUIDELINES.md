@@ -11,6 +11,7 @@ Read this guide when planning, implementing, or reviewing TypeScript changes. Te
 ## Types and values
 
 - Use `unknown` rather than `any` for untrusted values (parsed JSON, config files, CLI output, plugin events) and narrow it at the boundary.
+- Type path-valued strings as `AbsolutePath` (each area — plugin, each published skill — owns a small `absolute-path.ts` because areas share no code). Convert raw strings once at the boundary (CLI arguments, environment, Git or OpenCode output, plugin input) with `toAbsolutePath`, which throws for relative paths.
 - Prefer named exports and `as const` objects over TypeScript enums.
 
 ## Names and files

@@ -18,7 +18,7 @@ The whole product has **one version**. Users are never asked to reason about sep
 ## Non-goals
 
 - Publishing to npm or any release automation. The package is publishable but `private: true`; automation is tracked in [#2](https://github.com/sflandergan/open-code-permissions/issues/2).
-- Changing what the plugin records, how the skills analyze permissions, or the database schema (version 3).
+- Changing what the plugin records or how the skills analyze permissions.
 - Porting `installed-runtime.test.ts` (needs a live `opencode` and the sister repo's exact wiring) or `local-smoke.sh` (replaced by an entry test).
 - Splitting the repository into multiple packages or a Bun workspace.
 - Changing the agentic coding toolkit itself. Upstream support for marking installed skills internal is a separate follow-up in `agentic-coding-next`.
@@ -26,12 +26,7 @@ The whole product has **one version**. Users are never asked to reason about sep
 
 ## Terminology
 
-OpenCode terms are used as in `docs/CODING_GUIDELINES.md`: permission, rule, pattern, action, agent, session.
-
-- **Observation**: one persisted lifecycle of a permission request (asked, then decision, then completion), keyed by OpenCode's `request_id`.
-- **Published skill**: one of the two skills this repository ships from the top-level `skills/` directory (`opencode-permissions`, `opencode-permission-optimizer`).
-- **Toolkit skill**: any skill under `.agents/skills/`, installed by `setup` from `agentic-coding-next` or a third party and recorded in `skills-lock.json`.
-- **Internal skill**: a skill whose `SKILL.md` frontmatter sets `metadata.internal: true`, which hides it from the skills CLI's normal discovery.
+Domain terms are defined in the root `CONTEXT.md`.
 
 ## Architecture
 
@@ -60,8 +55,9 @@ docs/TOOLKIT-UPGRADE.md                            # agent instructions for upgr
 ### Separation rules
 
 - No production file in the plugin, in a skill, or in `scripts/` imports from another of those areas. A test enforces this with a static scan of import specifiers.
-- Each skill directory is self-contained, because the skills CLI installs it alone. Skills hold no plugin code and the plugin holds no skill code. The small repository-identity logic is intentionally duplicated between the plugin and the optimizer skill.
-- The only shared contract is the SQLite schema (version 3). The plugin owns it. The optimizer skill's reader rejects any other version with an error that names the found and expected versions.
+- Each published skill directory holds its own code; skills hold no plugin code and the plugin holds no skill code. Exception: `opencode-permission-optimizer` invokes the sibling `opencode-permissions` skill's `scripts/inspect.sh` at `../../opencode-permissions/`, so both skills must be installed side by side. The optimizer's wrappers exit non-zero with `error: opencode-permission-optimizer requires the opencode-permissions skill installed beside it (expected <path>)` when that script is missing. The repository-identity logic stays intentionally duplicated between the plugin and the optimizer skill.
+- The only shared contract is the SQLite schema (version 4). The plugin owns it. The optimizer skill's reader rejects any other version with an error that names the found and expected versions.
+- Version 4 renames `observation_inputs` → `requested_patterns`, `exact_input` → `pattern`, `input_index` → `pattern_index`. The plugin migrates v1, v2 and v3 databases to v4 in one transaction, preserving every observation and requested pattern. The optimizer reader accepts only version 4.
 
 ### Packaging
 
