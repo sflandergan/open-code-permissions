@@ -5,10 +5,11 @@ import { join } from "node:path"
 import { platform as processPlatform } from "node:process"
 
 /**
- * Current schema version: the checkpoint-free v3 shape. Mirrors the plugin's
- * schema contract; plugin and reader are updated as a compatible unit.
+ * Current schema version: requested patterns live in `requested_patterns`.
+ * Mirrors the plugin's schema contract; plugin and reader are updated as a
+ * compatible unit.
  */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 /** Observation retention window in days from the last lifecycle activity. */
 export const RETENTION_DAYS = 30
@@ -208,9 +209,9 @@ function queryJoinedRows(db: Database, { repositoryIdentity, agent, fromUtc, toU
   return db
     .query(
       `SELECT o.id, o.request_id, o.session_id, o.permission, o.worktree, o.asked_at,
-              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, oi.exact_input
+              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, oi.pattern AS exact_input
        FROM observations o
-       JOIN observation_inputs oi ON oi.observation_id = o.id
+       JOIN requested_patterns oi ON oi.observation_id = o.id
        WHERE o.${identityClause}
          AND o.agent = ?
          AND COALESCE(o.completed_at, o.decided_at, o.asked_at) >= ?

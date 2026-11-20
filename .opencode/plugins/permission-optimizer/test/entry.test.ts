@@ -110,12 +110,12 @@ describe("plugin entry", () => {
       .query("SELECT request_id, decision, execution, tool FROM observations WHERE request_id = ?")
       .get("req-1") as ObservationRow | undefined
     const inputs = db
-      .query("SELECT exact_input FROM observation_inputs ORDER BY input_index")
-      .all() as Array<{ exact_input: string }>
+      .query("SELECT pattern FROM requested_patterns ORDER BY pattern_index")
+      .all() as Array<{ pattern: string }>
     db.close()
 
     expect(row).toEqual({ request_id: "req-1", decision: "once", execution: "success", tool: "bash" })
-    expect(inputs).toEqual([{ exact_input: "git status" }])
+    expect(inputs).toEqual([{ pattern: "git status" }])
   })
 
   it("leaves the default database untouched when an override is set", async () => {

@@ -60,7 +60,7 @@ test("prints the help text from the wrapper without creating an output file", ()
   }
 })
 
-function createV3Database(dbPath: string): Database {
+function createCurrentSchemaDatabase(dbPath: string): Database {
   const db = new Database(dbPath)
   db.exec(`CREATE TABLE schema_metadata (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL) STRICT`)
   db.exec(`CREATE TABLE observations (
@@ -73,12 +73,12 @@ function createV3Database(dbPath: string): Database {
     qualifying_approval INTEGER NOT NULL GENERATED ALWAYS AS (
       CASE WHEN decision IN ('once','always') AND execution = 'success'
         AND repository_identity IS NOT NULL AND agent IS NOT NULL THEN 1 ELSE 0 END) STORED) STRICT`)
-  db.exec(`CREATE TABLE observation_inputs (
+  db.exec(`CREATE TABLE requested_patterns (
     observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
-    input_index INTEGER NOT NULL CHECK (input_index >= 0),
-    exact_input TEXT NOT NULL CHECK (length(exact_input) > 0),
-    PRIMARY KEY (observation_id, input_index)) STRICT`)
-  db.query("INSERT INTO schema_metadata (id, version) VALUES (1, 3)").run()
+    pattern_index INTEGER NOT NULL CHECK (pattern_index >= 0),
+    pattern TEXT NOT NULL CHECK (length(pattern) > 0),
+    PRIMARY KEY (observation_id, pattern_index)) STRICT`)
+  db.query("INSERT INTO schema_metadata (id, version) VALUES (1, 4)").run()
   return db
 }
 
@@ -91,7 +91,7 @@ function insertObservation(db: Database, opts: InsertObservationOptions): void {
   ).run(opts.requestId, opts.sessionId, IDENTITY, opts.worktree, opts.permission,
     opts.askedAt, opts.decision ?? "once", opts.decidedAt ?? null,
     opts.execution ?? "success", opts.completedAt ?? null)
-  db.query("INSERT INTO observation_inputs (observation_id, input_index, exact_input) VALUES (?, 0, ?)")
+  db.query("INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, 0, ?)")
     .run(Number(result.lastInsertRowid), opts.input)
 }
 
@@ -234,7 +234,7 @@ test("caps the retention window at the maximum retention period", () => {
 test("exports repository, agent, counts, policy, and evidence for an available database", () => {
   const { cwd, dbPath, cleanup } = createTestContext()
   try {
-    const db = createV3Database(dbPath)
+    const db = createCurrentSchemaDatabase(dbPath)
     insertObservation(db, { requestId: "r1", sessionId: "s1", permission: "bash", input: "git status", worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
     db.close()
     const invocations: InspectorRequest[] = []
@@ -244,7 +244,7 @@ test("exports repository, agent, counts, policy, and evidence for an available d
     })
     expect(summary.summaryVersion).toEqual(1)
     expect(summary.databaseState).toEqual("available")
-    expect(summary.schemaVersion).toEqual(3)
+    expect(summary.schemaVersion).toEqual(4)
     expect(summary.repository).toEqual({ identity: IDENTITY, worktree: cwd })
     expect(summary.agent).toEqual({ name: "implement", mode: "all", status: "custom" })
     expect(summary.counts).toEqual({ observations: 1, approvals: 1, rejections: 0, unresolved: 0, distinctSessions: 1 })
@@ -298,7 +298,7 @@ test("reports an absent database as an empty summary with no policy or evidence"
 test("fails the export when policy inspection fails", () => {
   const { cwd, dbPath, cleanup } = createTestContext()
   try {
-    const db = createV3Database(dbPath)
+    const db = createCurrentSchemaDatabase(dbPath)
     insertObservation(db, { requestId: "r1", sessionId: "s1", permission: "bash", input: "git status", worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
     db.close()
     expect(() => runSummary({
@@ -313,7 +313,7 @@ test("fails the export when policy inspection fails", () => {
 test("fails the export when the agent is absent from the runtime inventory", () => {
   const { cwd, dbPath, cleanup } = createTestContext()
   try {
-    const db = createV3Database(dbPath)
+    const db = createCurrentSchemaDatabase(dbPath)
     insertObservation(db, { requestId: "r1", sessionId: "s1", permission: "bash", input: "git status", worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
     db.close()
     expect(() => runSummary({
@@ -328,11 +328,11 @@ test("fails the export when the agent is absent from the runtime inventory", () 
 test("fails the export naming the expected and found schema versions", () => {
   const { cwd, dbPath, cleanup } = createTestContext()
   try {
-    const db = createV3Database(dbPath)
+    const db = createCurrentSchemaDatabase(dbPath)
     db.query("UPDATE schema_metadata SET version = 2 WHERE id = 1").run()
     db.close()
     expect(() => runSummary({ agent: "implement", cwd, now: NOW, databasePath: dbPath,
-      invokeInspector: fakeInspector([]) })).toThrow(/incompatible schema.*expected 3.*found 2/i)
+      invokeInspector: fakeInspector([]) })).toThrow(/incompatible schema.*expected 4.*found 2/i)
   } finally {
     cleanup()
   }

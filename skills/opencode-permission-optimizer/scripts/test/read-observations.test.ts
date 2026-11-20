@@ -27,7 +27,7 @@ interface InsertObservationOptions {
   completedAt?: string | null
 }
 
-function createV3Database(dbPath: string): Database {
+function createCurrentSchemaDatabase(dbPath: string): Database {
   const db = new Database(dbPath)
   db.exec(`CREATE TABLE schema_metadata (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL) STRICT`)
   db.exec(`CREATE TABLE observations (
@@ -40,11 +40,11 @@ function createV3Database(dbPath: string): Database {
     qualifying_approval INTEGER NOT NULL GENERATED ALWAYS AS (
       CASE WHEN decision IN ('once','always') AND execution = 'success'
         AND repository_identity IS NOT NULL AND agent IS NOT NULL THEN 1 ELSE 0 END) STORED) STRICT`)
-  db.exec(`CREATE TABLE observation_inputs (
+  db.exec(`CREATE TABLE requested_patterns (
     observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
-    input_index INTEGER NOT NULL CHECK (input_index >= 0),
-    exact_input TEXT NOT NULL CHECK (length(exact_input) > 0),
-    PRIMARY KEY (observation_id, input_index)) STRICT`)
+    pattern_index INTEGER NOT NULL CHECK (pattern_index >= 0),
+    pattern TEXT NOT NULL CHECK (length(pattern) > 0),
+    PRIMARY KEY (observation_id, pattern_index)) STRICT`)
   db.query("INSERT INTO schema_metadata (id, version) VALUES (1, ?)").run(SCHEMA_VERSION)
   return db
 }
@@ -68,7 +68,7 @@ function insertObservation(db: Database, options: InsertObservationOptions): voi
   ).run(requestId, sessionId, IDENTITY, worktree, permission, askedAt, decision, decidedAt, execution, completedAt)
   const row = db.query<{ id: number }, [string]>("SELECT id FROM observations WHERE request_id = ?").get(requestId)
   if (row === null) throw new Error(`inserted observation ${requestId} was not found`)
-  db.query("INSERT INTO observation_inputs (observation_id, input_index, exact_input) VALUES (?, 0, ?)").run(
+  db.query("INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, 0, ?)").run(
     row.id,
     input,
   )
@@ -100,8 +100,8 @@ function readEvidence(dbPath: string): EvidenceReport {
 test("reports a database from an earlier schema version as incompatible", () => {
   const { dbPath, cleanup } = createDatabasePath()
   try {
-    const db = createV3Database(dbPath)
-    db.exec("DROP TABLE observation_inputs")
+    const db = createCurrentSchemaDatabase(dbPath)
+    db.exec("DROP TABLE requested_patterns")
     db.exec("CREATE TABLE review_checkpoints (repository_identity TEXT, agent TEXT, reviewed_through TEXT) STRICT")
     db.exec("UPDATE schema_metadata SET version = 2")
     db.close()
@@ -116,7 +116,7 @@ test("reports a database from an earlier schema version as incompatible", () => 
 test("reports each exact input with its decision counts, distinct sessions, and worktrees", () => {
   const { dbPath, cleanup } = createDatabasePath()
   try {
-    const db = createV3Database(dbPath)
+    const db = createCurrentSchemaDatabase(dbPath)
     insertObservation(db, {
       requestId: "r1",
       sessionId: "s1",
@@ -168,7 +168,7 @@ test("reports each exact input with its decision counts, distinct sessions, and 
 test("counts a decision once when one observation carries multiple inputs", () => {
   const { dbPath, cleanup } = createDatabasePath()
   try {
-    const db = createV3Database(dbPath)
+    const db = createCurrentSchemaDatabase(dbPath)
     insertObservation(db, {
       requestId: "r1",
       sessionId: "s1",
@@ -181,7 +181,7 @@ test("counts a decision once when one observation carries multiple inputs", () =
     })
     const row = db.query<{ id: number }, [string]>("SELECT id FROM observations WHERE request_id = ?").get("r1")
     if (row === null) throw new Error("inserted observation r1 was not found")
-    db.query("INSERT INTO observation_inputs (observation_id, input_index, exact_input) VALUES (?, 1, ?)").run(
+    db.query("INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, 1, ?)").run(
       row.id,
       "git diff",
     )

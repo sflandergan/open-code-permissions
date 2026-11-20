@@ -311,10 +311,10 @@ describe("createLifecycleProcessor", () => {
     const conn = new db(dbPath)
     const obsCount = conn.query("SELECT COUNT(*) as cnt FROM observations").get() as { cnt: number }
     expect(obsCount.cnt).toBe(1)
-    const inputs = conn.query("SELECT * FROM observation_inputs ORDER BY input_index").all() as Record<string, unknown>[]
+    const inputs = conn.query("SELECT * FROM requested_patterns ORDER BY pattern_index").all() as Record<string, unknown>[]
     expect(inputs).toHaveLength(2)
-    expect(inputs[0].exact_input).toBe("git status")
-    expect(inputs[1].exact_input).toBe("git diff")
+    expect(inputs[0].pattern).toBe("git status")
+    expect(inputs[1].pattern).toBe("git diff")
     conn.close()
     store.close()
   })

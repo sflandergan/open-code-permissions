@@ -45,7 +45,7 @@ function insertInput(
   exactInput: string,
 ): void {
   db.run(
-    "INSERT INTO observation_inputs (observation_id, input_index, exact_input) VALUES (?, ?, ?)",
+    "INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, ?, ?)",
     [observationId, inputIndex, exactInput],
   )
 }
@@ -406,7 +406,7 @@ describe("observations", () => {
   })
 })
 
-describe("observation_inputs", () => {
+describe("requested_patterns", () => {
   let db: Database
 
   beforeEach(() => {
@@ -423,13 +423,13 @@ describe("observation_inputs", () => {
     insertInput(db, id, 1, "git diff")
 
     const rows = db
-      .query("SELECT * FROM observation_inputs WHERE observation_id = ? ORDER BY input_index")
+      .query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index")
       .all(id) as Record<string, unknown>[]
     expect(rows).toHaveLength(2)
-    expect(rows[0].input_index).toBe(0)
-    expect(rows[0].exact_input).toBe("git status")
-    expect(rows[1].input_index).toBe(1)
-    expect(rows[1].exact_input).toBe("git diff")
+    expect(rows[0].pattern_index).toBe(0)
+    expect(rows[0].pattern).toBe("git status")
+    expect(rows[1].pattern_index).toBe(1)
+    expect(rows[1].pattern).toBe("git diff")
   })
 
   test("rejects a negative input position", () => {
@@ -457,7 +457,7 @@ describe("observation_inputs", () => {
     insertInput(db, id, 0, "git status")
     insertInput(db, id, 1, "git status")
     const rows = db
-      .query("SELECT * FROM observation_inputs WHERE observation_id = ? ORDER BY input_index")
+      .query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index")
       .all(id) as Record<string, unknown>[]
     expect(rows).toHaveLength(2)
   })
@@ -467,13 +467,13 @@ describe("observation_inputs", () => {
     insertInput(db, id, 0, "git status")
     db.run("DELETE FROM observations WHERE id = ?", [id])
     const rows = db
-      .query("SELECT * FROM observation_inputs WHERE observation_id = ?")
+      .query("SELECT * FROM requested_patterns WHERE observation_id = ?")
       .all(id) as Record<string, unknown>[]
     expect(rows).toHaveLength(0)
   })
 })
 
-test("v3 schema has no review_checkpoints table", () => {
+test("current schema has no review_checkpoints table", () => {
   const db = openTestDb()
   const row = db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'review_checkpoints'").get()
   expect(row).toBeNull()

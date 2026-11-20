@@ -58,7 +58,7 @@ class SqliteObservationStore implements ObservationStore {
     assertCanonicalAskedFacts(record)
     this.withTransaction(() => {
       const id = this.upsertObservationRow(record)
-      this.replaceInputs(id, record.patterns)
+      this.replacePatterns(id, record.patterns)
     })
     this.pruneWhenDue()
   }
@@ -150,21 +150,24 @@ class SqliteObservationStore implements ObservationStore {
    * untouched. Returns the stable row id for child replacement.
    */
   private upsertObservationRow(record: ObservationRecord): number {
-    this.db.run(
-      `INSERT INTO observations
-         (request_id, session_id, message_id, call_id,
-          repository_identity, worktree, agent,
-          permission, asked_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (request_id) DO UPDATE SET
-         session_id = excluded.session_id,
-         message_id = COALESCE(observations.message_id, excluded.message_id),
-         call_id = COALESCE(observations.call_id, excluded.call_id),
-         repository_identity = COALESCE(observations.repository_identity, excluded.repository_identity),
-         worktree = excluded.worktree,
-         agent = COALESCE(observations.agent, excluded.agent),
-         permission = excluded.permission`,
-      [
+    const row = this.db
+      .query(
+        `INSERT INTO observations
+           (request_id, session_id, message_id, call_id,
+            repository_identity, worktree, agent,
+            permission, asked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (request_id) DO UPDATE SET
+           session_id = excluded.session_id,
+           message_id = COALESCE(observations.message_id, excluded.message_id),
+           call_id = COALESCE(observations.call_id, excluded.call_id),
+           repository_identity = COALESCE(observations.repository_identity, excluded.repository_identity),
+           worktree = excluded.worktree,
+           agent = COALESCE(observations.agent, excluded.agent),
+           permission = excluded.permission
+         RETURNING id`,
+      )
+      .get(
         record.requestId,
         record.sessionId,
         record.messageId,
@@ -174,26 +177,23 @@ class SqliteObservationStore implements ObservationStore {
         record.agent,
         record.permission,
         record.askedAt,
-      ],
-    )
-    const row = this.db
-      .query("SELECT id FROM observations WHERE request_id = ?")
-      .get(record.requestId) as { id: number }
+      ) as { id: number }
     return row.id
   }
 
-  private replaceInputs(observationId: number, patterns: string[]): void {
+  // The pattern count can change between asks of one request, so the set is replaced wholesale inside the caller's BEGIN IMMEDIATE transaction.
+  private replacePatterns(observationId: number, patterns: string[]): void {
     this.db.run(
-      "DELETE FROM observation_inputs WHERE observation_id = ?",
+      "DELETE FROM requested_patterns WHERE observation_id = ?",
       [observationId],
     )
-    this.insertInputs(observationId, patterns)
+    this.insertPatterns(observationId, patterns)
   }
 
-  private insertInputs(observationId: number, patterns: string[]): void {
+  private insertPatterns(observationId: number, patterns: string[]): void {
     for (let i = 0; i < patterns.length; i++) {
       this.db.run(
-        "INSERT INTO observation_inputs (observation_id, input_index, exact_input) VALUES (?, ?, ?)",
+        "INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, ?, ?)",
         [observationId, i, patterns[i]],
       )
     }

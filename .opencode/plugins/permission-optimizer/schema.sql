@@ -1,5 +1,5 @@
--- Permission optimizer observation schema version 3.
--- schema_metadata, observations, and observation_inputs
+-- Permission optimizer observation schema version 4.
+-- schema_metadata, observations, and requested_patterns
 -- are STRICT tables.
 -- The normative contract lives in the plan and spec; this file is the
 -- authoritative SQL source read by the store and reader scripts.
@@ -80,11 +80,11 @@ CREATE TABLE IF NOT EXISTS observations (
   CHECK (length(permission) > 0)
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS observation_inputs (
+CREATE TABLE IF NOT EXISTS requested_patterns (
   observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
-  input_index    INTEGER NOT NULL CHECK (input_index >= 0),
-  exact_input    TEXT    NOT NULL CHECK (length(exact_input) > 0),
-  PRIMARY KEY (observation_id, input_index)
+  pattern_index  INTEGER NOT NULL CHECK (pattern_index >= 0),
+  pattern        TEXT    NOT NULL CHECK (length(pattern) > 0),
+  PRIMARY KEY (observation_id, pattern_index)
 ) STRICT;
 
 -- Session/call correlation index for completion hooks

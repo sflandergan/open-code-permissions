@@ -100,7 +100,7 @@ describe("observation schema contract", () => {
     writer.close()
 
     const opened = openObservationDatabase(dbPath)
-    expect(opened).toEqual({ state: "incompatible", schemaVersion: 3, foundSchemaVersion: 999 })
+    expect(opened).toEqual({ state: "incompatible", schemaVersion: 4, foundSchemaVersion: 999 })
 
     expect(() =>
       runSummary({
@@ -110,6 +110,6 @@ describe("observation schema contract", () => {
         databasePath: dbPath,
         invokeInspector: () => ({ agents: [] }),
       }),
-    ).toThrow("incompatible schema: expected 3, found 999")
+    ).toThrow("incompatible schema: expected 4, found 999")
   })
 })

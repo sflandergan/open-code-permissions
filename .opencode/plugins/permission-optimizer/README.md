@@ -35,15 +35,21 @@ insert/update with its ordered inputs commits as one transaction.
 
 ## Schema and migrations
 
-Version 3 uses three STRICT tables: `schema_metadata`, `observations`, and
-`observation_inputs`. A plugin startup migrates a verified v1 or v2 database to
-v3 in one transaction, preserving every observation and exact input. Unsupported
-schemas are rejected without mutation.
+Version 4 uses three STRICT tables: `schema_metadata`, `observations`, and
+`requested_patterns`. A plugin startup migrates a verified v1, v2 or v3 database to
+v4 in one transaction, preserving every observation and requested pattern. When the
+schema is unsupported or malformed, the database is left unchanged, the plugin warns
+once at startup (naming the expected and found versions when the schema version is
+unsupported), and records nothing for the session.
+
+A rejected permission is recorded with decision `reject` and its decision time;
+the tool never runs, so no completion is recorded and retention counts from the
+decision time.
 
 ## Retention
 
 Observations are physically deleted when their last lifecycle activity
-(completion, else decision, else asked time) is strictly older than 30 days;
+(completion, else decision, else asked time) is older than 30 days;
 the exact-cutoff row is retained. Pruning runs at database open and at most
 once per hour during ordinary writes. No scheduler is required.
 

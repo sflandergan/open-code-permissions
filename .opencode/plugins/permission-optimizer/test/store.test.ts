@@ -280,11 +280,11 @@ describe("openDatabase", () => {
     check.close()
   })
 
-  test("rejects a malformed v3 database without changing database or WAL bytes", () => {
+  test("rejects a malformed current database without changing database or WAL bytes", () => {
     const dbPath = join(tmpDir, "obs.sqlite")
     const db = openDatabase(dbPath)
-    db.exec("DROP TABLE observation_inputs")
-    db.run("UPDATE schema_metadata SET version = 3 WHERE id = 1")
+    db.exec("DROP TABLE requested_patterns")
+    db.run("UPDATE schema_metadata SET version = ? WHERE id = 1", [SCHEMA_VERSION])
     db.close()
 
     const mainBefore = fileHash(dbPath)
@@ -295,120 +295,6 @@ describe("openDatabase", () => {
     const walPath = dbPath + "-wal"
     const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
     expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
-  })
-})
-
-describe("schema v3 migration", () => {
-  let tmpDir: string
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "perm-opt-"))
-  })
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
-  })
-
-  function seedVersionedDatabase(version: number, withCheckpoints: boolean): string {
-    const dbPath = join(tmpDir, "obs.sqlite")
-    const seeded = openDatabase(dbPath)
-    seeded.run(
-      `INSERT INTO observations (request_id, session_id, worktree, permission, asked_at)
-       VALUES ('legacy', 'session', '/worktree', 'bash', '${VALID_UTC}')`,
-    )
-    seeded.run(
-      `INSERT INTO observation_inputs (observation_id, input_index, exact_input)
-       VALUES (1, 0, 'git status')`,
-    )
-    seeded.run("DROP TABLE IF EXISTS review_checkpoints")
-    if (withCheckpoints) {
-      seeded.exec(`CREATE TABLE review_checkpoints (
-        repository_identity TEXT NOT NULL, agent TEXT NOT NULL,
-        reviewed_through TEXT NOT NULL, PRIMARY KEY (repository_identity, agent)) STRICT`)
-      seeded.run(
-        "INSERT INTO review_checkpoints (repository_identity, agent, reviewed_through) VALUES (?, ?, ?)",
-        ["github.com/user/repo", "implement", VALID_UTC],
-      )
-    }
-    seeded.run("UPDATE schema_metadata SET version = ? WHERE id = 1", [version])
-    seeded.close()
-    return dbPath
-  }
-
-  test("v1 database migrates directly to v3 without review_checkpoints and preserves observations", () => {
-    const dbPath = seedVersionedDatabase(1, false)
-    const store = createObservationStore(dbPath, { now: () => new Date(VALID_UTC_3) })
-    const db = new Database(dbPath, { readonly: true })
-    expect(db.query("SELECT version FROM schema_metadata WHERE id = 1").get()).toEqual({ version: 3 })
-    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'review_checkpoints'").get()).toBeNull()
-    expect(db.query("SELECT COUNT(*) AS cnt FROM observations").get()).toEqual({ cnt: 1 })
-    db.close()
-    store.close()
-  })
-
-  test("v2 database drops review_checkpoints transactionally and preserves observations", () => {
-    const dbPath = seedVersionedDatabase(2, true)
-    const store = createObservationStore(dbPath, { now: () => new Date(VALID_UTC_3) })
-    const db = new Database(dbPath, { readonly: true })
-    expect(db.query("SELECT version FROM schema_metadata WHERE id = 1").get()).toEqual({ version: 3 })
-    expect(db.query("SELECT name FROM sqlite_master WHERE name = 'review_checkpoints'").get()).toBeNull()
-    expect(db.query("SELECT COUNT(*) AS cnt FROM observations").get()).toEqual({ cnt: 1 })
-    db.close()
-    store.close()
-  })
-
-  test("rejects a version-1 database that contains checkpoint rows", () => {
-    const dbPath = seedVersionedDatabase(1, true)
-    const mainBefore = fileHash(dbPath)
-    const walBefore = fileHash(dbPath + "-wal")
-
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema/i)
-    expect(fileHash(dbPath)).toBe(mainBefore)
-    const walPath = dbPath + "-wal"
-    const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
-    expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
-
-    const check = new Database(dbPath, { readonly: true })
-    expect(check.query("SELECT version FROM schema_metadata WHERE id = 1").get()).toEqual({ version: 1 })
-    expect(check.query("SELECT name FROM sqlite_master WHERE name = 'review_checkpoints'").get()).not.toBeNull()
-    expect(check.query("SELECT COUNT(*) AS cnt FROM observations").get()).toEqual({ cnt: 1 })
-    check.close()
-  })
-
-  test("rolls back a malformed v2 migration that cannot reach the v3 shape", () => {
-    const dbPath = seedVersionedDatabase(2, true)
-    const malformed = new Database(dbPath)
-    malformed.exec("DROP TABLE observation_inputs")
-    malformed.close()
-
-    const mainBefore = fileHash(dbPath)
-    const walBefore = fileHash(dbPath + "-wal")
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema/i)
-    expect(fileHash(dbPath)).toBe(mainBefore)
-    const walPath = dbPath + "-wal"
-    const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
-    expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
-
-    const check = new Database(dbPath, { readonly: true })
-    expect(check.query("SELECT version FROM schema_metadata WHERE id = 1").get()).toEqual({ version: 2 })
-    expect(check.query("SELECT name FROM sqlite_master WHERE name = 'review_checkpoints'").get()).not.toBeNull()
-    expect(check.query("SELECT request_id FROM observations").get()).toEqual({ request_id: "legacy" })
-    check.close()
-  })
-
-  test("unsupported schema version is left untouched", () => {
-    const dbPath = seedVersionedDatabase(99, false)
-    const mainBefore = fileHash(dbPath)
-    const walBefore = fileHash(dbPath + "-wal")
-    expect(() => openDatabase(dbPath)).toThrow(/incompatible schema version/i)
-    expect(fileHash(dbPath)).toBe(mainBefore)
-    // SQLite may recreate an absent WAL as an empty file during read-only inspection.
-    const walPath = dbPath + "-wal"
-    const emptyWal = !existsSync(walPath) || statSync(walPath).size === 0
-    expect(fileHash(walPath) === walBefore || (walBefore === null && emptyWal)).toBe(true)
-    const db = new Database(dbPath, { readonly: true })
-    expect(db.query("SELECT version FROM schema_metadata WHERE id = 1").get()).toEqual({ version: 99 })
-    db.close()
   })
 })
 
@@ -432,9 +318,9 @@ describe("createObservationStore", () => {
     const obs = db.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown> & { id: number }
     expect(obs.session_id).toBe("sess_001")
     expect(obs.permission).toBe("bash")
-    const inputs = db.query("SELECT * FROM observation_inputs WHERE observation_id = ? ORDER BY input_index").all(obs.id) as Record<string, unknown>[]
+    const inputs = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
     expect(inputs).toHaveLength(1)
-    expect(inputs[0].exact_input).toBe("git status")
+    expect(inputs[0].pattern).toBe("git status")
     db.close()
     store.close()
   })
@@ -456,9 +342,9 @@ describe("createObservationStore", () => {
     store.upsertAsked(makeAskedRecord({ patterns: ["git log"] }))
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT id FROM observations WHERE request_id = 'req_001'").get() as { id: number }
-    const inputs = db.query("SELECT * FROM observation_inputs WHERE observation_id = ? ORDER BY input_index").all(obs.id) as Record<string, unknown>[]
+    const inputs = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
     expect(inputs).toHaveLength(1)
-    expect(inputs[0].exact_input).toBe("git log")
+    expect(inputs[0].pattern).toBe("git log")
     db.close()
     store.close()
   })
@@ -469,7 +355,7 @@ describe("createObservationStore", () => {
     const db = openDatabase(dbPath)
     const count = db.query("SELECT COUNT(*) as cnt FROM observations").get() as Record<string, unknown>
     expect(count.cnt).toBe(1)
-    const inputCount = db.query("SELECT COUNT(*) as cnt FROM observation_inputs").get() as Record<string, unknown>
+    const inputCount = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
     expect(inputCount.cnt).toBe(3)
     db.close()
     store.close()
@@ -588,7 +474,7 @@ describe("createObservationStore", () => {
     store.upsertAsked(makeAskedRecord({ requestId: "req_old", askedAt: "2026-07-01T10:00:00.000Z", patterns: ["a", "b"] }))
     store.prune("2026-08-01T00:00:00.000Z")
     const db = openDatabase(dbPath)
-    const inputs = db.query("SELECT COUNT(*) as cnt FROM observation_inputs").get() as Record<string, unknown>
+    const inputs = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
     expect(inputs.cnt).toBe(0)
     db.close()
     store.close()
@@ -659,7 +545,7 @@ describe("transactional upsert", () => {
     store.close()
     const db = openDatabase(dbPath)
     expect(db.query("SELECT COUNT(*) as cnt FROM observations").get()).toEqual({ cnt: 0 })
-    expect(db.query("SELECT COUNT(*) as cnt FROM observation_inputs").get()).toEqual({ cnt: 0 })
+    expect(db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get()).toEqual({ cnt: 0 })
     db.close()
   })
 
@@ -673,8 +559,8 @@ describe("transactional upsert", () => {
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
     expect(obs.repository_identity).toBe("github.com/user/repo")
-    const inputs = db.query("SELECT exact_input FROM observation_inputs ORDER BY input_index").all() as { exact_input: string }[]
-    expect(inputs.map((row) => row.exact_input)).toEqual(["git status", "git diff"])
+    const inputs = db.query("SELECT pattern FROM requested_patterns ORDER BY pattern_index").all() as { pattern: string }[]
+    expect(inputs.map((row) => row.pattern)).toEqual(["git status", "git diff"])
     db.close()
   })
 })
@@ -782,7 +668,7 @@ describe("automatic retention", () => {
 
   function inputCount(): number {
     const db = openDatabase(dbPath)
-    const count = db.query("SELECT COUNT(*) as cnt FROM observation_inputs").get() as { cnt: number }
+    const count = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as { cnt: number }
     db.close()
     return count.cnt
   }
@@ -851,9 +737,9 @@ describe("concurrent writers", () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].id).toBe(seeded.id)
     const inputs = check
-      .query("SELECT exact_input FROM observation_inputs ORDER BY input_index")
-      .all() as { exact_input: string }[]
-    expect(inputs.map((row) => row.exact_input)).toEqual(["git status", "git diff", "git log"])
+      .query("SELECT pattern FROM requested_patterns ORDER BY pattern_index")
+      .all() as { pattern: string }[]
+    expect(inputs.map((row) => row.pattern)).toEqual(["git status", "git diff", "git log"])
     check.close()
   })
 })

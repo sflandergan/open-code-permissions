@@ -1,37 +1,12 @@
 import { Database } from "bun:sqlite"
 import { chmodSync, existsSync, lstatSync, mkdirSync, statSync } from "node:fs"
 import { dirname } from "node:path"
-import { readMigrationSql, readSchemaSql, SCHEMA_VERSION } from "./schema"
+import { isMigratableVersion, readSchemaSql, SCHEMA_VERSION } from "./schema"
+import { assertCurrentSchemaShape, migrateToCurrentSchema } from "./schema-migration"
 
 const BUSY_TIMEOUT_MS = 5000
 const DIRECTORY_MODE = 0o700
 const FILE_MODE = 0o600
-const REQUIRED_SCHEMA_COLUMNS = [
-  ["schema_metadata", ["id", "version", "created_at"]],
-  [
-    "observations",
-    [
-      "id",
-      "request_id",
-      "session_id",
-      "message_id",
-      "call_id",
-      "repository_identity",
-      "worktree",
-      "agent",
-      "permission",
-      "asked_at",
-      "decision",
-      "decided_at",
-      "tool",
-      "execution",
-      "exit_code",
-      "completed_at",
-      "qualifying_approval",
-    ],
-  ],
-  ["observation_inputs", ["observation_id", "input_index", "exact_input"]],
-] as const
 
 /**
  * Opens (or creates) the observation database at `dbPath` and returns it with
@@ -40,9 +15,9 @@ const REQUIRED_SCHEMA_COLUMNS = [
  *
  * Compatibility-first: an existing non-empty database is inspected read-only
  * before any persistent PRAGMA, schema, prune, permission, or WAL mutation.
- * An unsupported database is closed and left byte-identical; verified v1 and
- * v2 databases are migrated to v3 in one transaction. A new database is
- * initialized — schema plus metadata — in a single transaction.
+ * An unsupported database is closed and left byte-identical; a verified
+ * supported database is migrated to the current schema in one transaction. A
+ * new database is initialized — schema plus metadata — in a single transaction.
  *
  * Filesystem protection (leaf directory `0700`, database file and `-wal`/`-shm`
  * sidecars `0600`) is established before any observation data can be written.
@@ -73,7 +48,7 @@ function openExistingDatabase(dbPath: string): Database {
   if (state.version === null) {
     throw new Error("incompatible schema: schema_metadata table or version row is missing")
   }
-  if (state.version !== SCHEMA_VERSION && state.version !== 1 && state.version !== 2) {
+  if (state.version !== SCHEMA_VERSION && !isMigratableVersion(state.version)) {
     throw new Error(`incompatible schema version: expected ${SCHEMA_VERSION}, found ${state.version}`)
   }
 
@@ -81,31 +56,13 @@ function openExistingDatabase(dbPath: string): Database {
   try {
     db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
     db.exec("PRAGMA foreign_keys = ON")
-    if (state.version !== SCHEMA_VERSION) migrateToV3(db, state.version)
+    if (state.version !== SCHEMA_VERSION) migrateToCurrentSchema(db, state.version)
     db.exec("PRAGMA journal_mode = WAL")
     setOwnerOnlyFileMode(dbPath)
     protectSidecarFiles(dbPath)
     return db
   } catch (err) {
     db.close()
-    throw err
-  }
-}
-
-function migrateToV3(db: Database, fromVersion: number): void {
-  db.exec("BEGIN IMMEDIATE")
-  try {
-    db.exec(readMigrationSql(fromVersion, SCHEMA_VERSION))
-    const row = db.query("SELECT version FROM schema_metadata WHERE id = 1").get() as { version: number }
-    if (row.version !== SCHEMA_VERSION) throw new Error(`v${fromVersion} to v3 migration did not update schema metadata`)
-    validateCurrentSchemaShape(db)
-    db.exec("COMMIT")
-  } catch (err) {
-    try {
-      db.exec("ROLLBACK")
-    } catch {
-      // The transaction already ended; the original error is the cause.
-    }
     throw err
   }
 }
@@ -127,9 +84,9 @@ function createNewDatabase(dbPath: string): Database {
 }
 
 /**
- * Read-only compatibility inspection; never mutates the database. v1 and v2
- * states are migratable; v3 is accepted only after its checkpoint-free shape
- * is validated.
+ * Read-only compatibility inspection; never mutates the database. Supported
+ * older versions are migratable; the current version is accepted only after
+ * its shape is validated.
  */
 function readDatabaseState(db: Database): DatabaseState {
   const metadataTable = db
@@ -149,48 +106,10 @@ function readDatabaseState(db: Database): DatabaseState {
   }
 
   if (row.version === SCHEMA_VERSION) {
-    validateCurrentSchemaShape(db)
+    assertCurrentSchemaShape(db)
   }
 
   return { version: row.version }
-}
-
-function validateCurrentSchemaShape(db: Database): void {
-  for (const [table, columns] of REQUIRED_SCHEMA_COLUMNS) validateRequiredTable(db, table, columns)
-
-  rejectLegacyCheckpointObjects(db)
-}
-
-function validateRequiredTable(db: Database, table: string, columns: readonly string[]): void {
-  const tableRow = db
-    .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-    .get(table) as { name: string } | undefined
-  if (!tableRow) throw new Error(`incompatible schema: required table ${table} is missing`)
-
-  const declaredColumns = db
-    .query(`SELECT name FROM pragma_table_info('${table}')`)
-    .all() as { name: string }[]
-  const generatedColumns = db
-    .query(`SELECT name FROM pragma_table_xinfo('${table}') WHERE hidden <> 0`)
-    .all() as { name: string }[]
-  const declared = new Set([...declaredColumns, ...generatedColumns].map((column) => column.name))
-  for (const column of columns) {
-    if (!declared.has(column)) {
-      throw new Error(`incompatible schema: ${table} table is missing required column ${column}`)
-    }
-  }
-}
-
-function rejectLegacyCheckpointObjects(db: Database): void {
-  const checkpointObject = db
-    .query(
-      `SELECT type, name FROM sqlite_master
-       WHERE name IN ('review_checkpoints', 'review_checkpoints_agent_idx')`,
-    )
-    .get() as { type: string; name: string } | undefined
-  if (checkpointObject) {
-    throw new Error(`incompatible schema: checkpoint object ${checkpointObject.name} must be absent`)
-  }
 }
 
 /** New-database schema plus metadata initialization, committed atomically. */
