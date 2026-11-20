@@ -9,11 +9,11 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
 /**
- * Fields that may be enriched after initial asked-time persistence.
- * Only non-null values fill previously null fields; known facts are never
- * overwritten with null.
+ * Repository identity, agent, message ID and tool call ID that tie an
+ * observation to where it came from. Only non-null values fill fields that
+ * are still null; known values are never overwritten.
  */
-export type AttributionFields = {
+export type ObservationOrigin = {
   repositoryIdentity: string | null
   agent: string | null
   messageId: string | null
@@ -26,7 +26,7 @@ export type AttributionFields = {
  */
 export type ObservationStore = {
   upsertAsked(record: ObservationRecord): void
-  enrichAttribution(requestId: string, fields: AttributionFields): void
+  fillObservationOrigin(requestId: string, origin: ObservationOrigin): void
   updateDecision(requestId: string, decision: PermissionDecision, decidedAt: string): number
   updateCompletion(sessionId: string, callId: string, completion: CompletionEvent): number
   prune(cutoffUtc: string): number
@@ -63,7 +63,7 @@ class SqliteObservationStore implements ObservationStore {
     this.pruneWhenDue()
   }
 
-  enrichAttribution(requestId: string, fields: AttributionFields): void {
+  fillObservationOrigin(requestId: string, origin: ObservationOrigin): void {
     assertNonEmpty(requestId, "requestId")
     this.withTransaction(() => {
       this.db.run(
@@ -73,7 +73,7 @@ class SqliteObservationStore implements ObservationStore {
              message_id = COALESCE(message_id, ?),
              call_id = COALESCE(call_id, ?)
          WHERE request_id = ?`,
-        [fields.repositoryIdentity, fields.agent, fields.messageId, fields.callId, requestId],
+        [origin.repositoryIdentity, origin.agent, origin.messageId, origin.callId, requestId],
       )
     })
     this.pruneWhenDue()

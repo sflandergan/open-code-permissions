@@ -15,6 +15,7 @@ import {
   consumeReplied,
   markCascadeTargets,
   consumeCascadeTarget,
+  type PendingRequest,
   type PendingRequests,
   type CascadeTargets,
 } from "./pending"
@@ -23,7 +24,7 @@ import {
 const MAX_EARLY_FACTS = 256
 
 /** Correlates permission events and tool completions into observation records. */
-export type LifecycleProcessor = {
+export type PermissionEventCorrelator = {
   handleEvent(event: PermissionEvent): Promise<void>
   handleCompletion(completion: CompletionEvent): Promise<void>
 }
@@ -39,24 +40,25 @@ export type IdentityResolver = () => RepositoryIdentity
 export type WarningSink = (message: string) => void
 
 /**
- * Creates a lifecycle processor that correlates permission asked/replied events
- * and tool completion hooks into idempotent observation records. All event
- * processing is serialized through a promise queue so overlapping or reordered
- * calls cannot interleave. Storage failures emit sanitized recoverable warnings
- * through `onWarning` and never block permission decisions or tool execution.
+ * Creates a permission event correlator that correlates permission
+ * asked/replied events and tool completion hooks into idempotent observation
+ * records. All event processing is serialized through a promise queue so
+ * overlapping or reordered calls cannot interleave. Storage failures emit
+ * sanitized recoverable warnings through `onWarning` and never block
+ * permission decisions or tool execution.
  */
-export function createLifecycleProcessor(
+export function createPermissionEventCorrelator(
   store: ObservationStore,
   agentResolver: AgentResolver,
   worktree: string,
   identityResolver?: IdentityResolver,
   onWarning?: WarningSink,
-): LifecycleProcessor {
+): PermissionEventCorrelator {
   const pending = createPendingRequests()
   const cascades = createCascadeTargets()
   const earlyFacts = createEarlyFactStore()
   const resolveIdentity = identityResolver ?? (() => resolveRepositoryIdentityFromGit(worktree))
-  return new CorrelatingLifecycleProcessor(
+  return new SqlitePermissionEventCorrelator(
     store,
     agentResolver,
     worktree,
@@ -121,7 +123,7 @@ function createSerialQueue(): {
   }
 }
 
-class CorrelatingLifecycleProcessor implements LifecycleProcessor {
+class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
   private readonly store: ObservationStore
   private readonly agentResolver: AgentResolver
   private readonly worktree: string
@@ -162,7 +164,7 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
         }
       } catch (err) {
         this.onWarning(
-          `permission-lifecycle: operation=handleEvent kind=${event.kind} request=${event.requestId}`,
+          `permission-event-correlator: operation=handleEvent kind=${event.kind} request=${event.requestId}`,
         )
       }
     })
@@ -182,7 +184,7 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
         }
       } catch (err) {
         this.onWarning(
-          `permission-lifecycle: operation=handleCompletion session=${completion.sessionId} call=${completion.callId}`,
+          `permission-event-correlator: operation=handleCompletion session=${completion.sessionId} call=${completion.callId}`,
         )
       }
     })
@@ -212,7 +214,7 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
       }
       this.store.upsertAsked(record)
     } else {
-      this.enrichAttribution(event, identity.identity, agent)
+      this.fillObservationOrigin(event, identity.identity, agent)
     }
 
     this.applyEarlyReplied(event.requestId)
@@ -220,16 +222,16 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
   }
 
   /**
-   * Non-destructive attribution enrichment: fills null fields without
+   * Non-destructive observation-origin enrichment: fills null fields without
    * overwriting known facts.
    */
-  private enrichAttribution(
+  private fillObservationOrigin(
     event: Extract<PermissionEvent, { kind: "asked" }>,
     repositoryIdentity: string | null,
     agent: string | null,
   ): void {
     try {
-      this.store.enrichAttribution(event.requestId, {
+      this.store.fillObservationOrigin(event.requestId, {
         repositoryIdentity,
         agent,
         messageId: event.messageId,
@@ -237,7 +239,7 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
       })
     } catch (err) {
       this.onWarning(
-        `permission-lifecycle: operation=enrichAttribution request=${event.requestId}`,
+        `permission-event-correlator: operation=fillObservationOrigin request=${event.requestId}`,
       )
     }
   }
@@ -249,7 +251,8 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
     const early = this.earlyFacts.get(requestId)
     if (early?.kind === "replied") {
       this.earlyFacts.delete(requestId)
-      this.classifyAndStore(early.event)
+      const pending = consumeReplied(this.pending, early.event)
+      if (pending) this.classifyAndStore(early.event, pending)
     }
   }
 
@@ -271,7 +274,7 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
         )
       } catch (err) {
         this.onWarning(
-          `permission-lifecycle: operation=applyEarlyCompletion session=${early.completion.sessionId} call=${early.completion.callId}`,
+          `permission-event-correlator: operation=applyEarlyCompletion session=${early.completion.sessionId} call=${early.completion.callId}`,
         )
       }
     }
@@ -280,9 +283,9 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
   private handleReplied(
     event: Extract<PermissionEvent, { kind: "replied" }>,
   ): void {
-    const hasPending = this.pending.has(event.requestId)
-    if (hasPending) {
-      this.classifyAndStore(event)
+    const pending = consumeReplied(this.pending, event)
+    if (pending) {
+      this.classifyAndStore(event, pending)
       return
     }
     // Try to update the store directly for observations that exist in the DB
@@ -298,45 +301,39 @@ class CorrelatingLifecycleProcessor implements LifecycleProcessor {
       }
     } catch (err) {
       this.onWarning(
-        `permission-lifecycle: operation=updateDecision request=${event.requestId}`,
+        `permission-event-correlator: operation=updateDecision request=${event.requestId}`,
       )
     }
   }
 
   /**
-   * Classifies a reply as direct, derived, or unresolved based on the pinned
-   * OpenCode 1.18.11 cascade evidence. A reply is direct only when no prior
-   * direct reply's `always` hints cover this request's patterns.
+   * Classifies a reply as direct, derived, or unresolved. A reply is direct
+   * only when no earlier direct reply's `always` hints cover this request's
+   * patterns.
    */
   private classifyAndStore(
     event: Extract<PermissionEvent, { kind: "replied" }>,
+    pending: PendingRequest,
   ): void {
     const cascade = consumeCascadeTarget(this.cascades, event.requestId)
-    const pending = consumeReplied(this.pending, event)
-
-    let decision: PermissionDecision
-    if (cascade) {
-      decision = classifyCascadeDecision(event.reply, cascade.reply)
-    } else if (pending) {
-      decision = classifyDirectDecision(event.reply)
-      if (event.reply === "always" || event.reply === "reject") {
-        markCascadeTargets(
-          this.pending,
-          this.cascades,
-          event.requestId,
-          pending.always,
-          event.reply,
-        )
-      }
-    } else {
-      decision = classifyCascadeDecision(event.reply)
+    const decision = cascade
+      ? classifyCascadeDecision(event.reply, cascade.reply)
+      : classifyDirectDecision(event.reply)
+    if (!cascade && (event.reply === "always" || event.reply === "reject")) {
+      markCascadeTargets(
+        this.pending,
+        this.cascades,
+        event.requestId,
+        pending.always,
+        event.reply,
+      )
     }
 
     try {
       this.store.updateDecision(event.requestId, decision, event.receivedAt)
     } catch (err) {
       this.onWarning(
-        `permission-lifecycle: operation=updateDecision request=${event.requestId}`,
+        `permission-event-correlator: operation=updateDecision request=${event.requestId}`,
       )
     }
   }
@@ -374,7 +371,9 @@ function classifyDirectDecision(reply: "once" | "always" | "reject"): Permission
  * When the cascade source was `always`, automatic `always` replies become
  * `always-derived`. When the cascade source was `reject`, automatic replies
  * become `rejection-derived`. Ambiguous sequences without a known source
- * become `unresolved`.
+ * become `unresolved`. OpenCode answers requests covered by an earlier always
+ * reply itself; any other reply on such a request is unexpected and is
+ * recorded as unresolved rather than counted as a decision.
  */
 function classifyCascadeDecision(
   reply: "once" | "always" | "reject",

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test"
+import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { createHash } from "node:crypto"
@@ -7,8 +7,9 @@ import { join } from "node:path"
 import type { PluginInput } from "@opencode-ai/plugin"
 import * as entry from "../../permission-optimizer"
 import { resolveDatabasePath } from "../database-path"
+import { permissionV2AskedEvent } from "./fixtures/events"
 
-interface DrivableHooks {
+interface PluginHooks {
   event?: (args: { event: unknown }) => Promise<void>
   "tool.execute.after"?: (input: unknown, output: unknown) => Promise<void>
   dispose?: () => Promise<void>
@@ -89,13 +90,33 @@ describe("plugin entry", () => {
     expect(Object.keys(entry)).toEqual(["PermissionOptimizerPlugin"])
   })
 
+  it("warns once when two unsupported permission events arrive", async () => {
+    const homeDir = join(tempDir, "home")
+    const overridePath = join(tempDir, "override", "observations.sqlite")
+    pinHome(homeDir)
+    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
+      await hooks.event?.({ event: permissionV2AskedEvent })
+      await hooks.event?.({ event: permissionV2AskedEvent })
+      await hooks.dispose?.()
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn.mock.calls[0]?.[0]).toContain("permission.v2.asked")
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it("records an observation in the overridden database when a permission is asked, answered, and completed", async () => {
     const homeDir = join(tempDir, "home")
     const overridePath = join(tempDir, "override", "observations.sqlite")
     pinHome(homeDir)
     process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
 
-    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as DrivableHooks
+    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
     expect(typeof hooks.event).toBe("function")
     expect(typeof hooks["tool.execute.after"]).toBe("function")
 
@@ -128,7 +149,7 @@ describe("plugin entry", () => {
     const before = defaultDatabaseState(defaultPath)
 
     process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
-    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as DrivableHooks
+    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
     await hooks.event?.({ event: askedEvent })
     await hooks.dispose?.()
 
@@ -141,7 +162,7 @@ describe("plugin entry", () => {
     writeFileSync(blocker, "x")
     process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = join(blocker, "observations.sqlite")
 
-    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as DrivableHooks
+    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
     expect(hooks.event).toBeUndefined()
     expect(hooks["tool.execute.after"]).toBeUndefined()
   })

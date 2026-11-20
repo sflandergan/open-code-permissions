@@ -58,19 +58,6 @@ export function adaptCompletion(input: unknown, output: unknown, clock: Clock): 
   }
 }
 
-/**
- * Returns a warner that forwards a type to `emit` only on the first call, so a
- * repeated unsupported-schema signal is reported once per process.
- */
-export function createOnceWarner(emit: (type: string) => void): (type: string) => void {
-  let warned = false
-  return (type) => {
-    if (warned) return
-    warned = true
-    emit(type)
-  }
-}
-
 function adaptAsked(payload: Record<string, unknown>, clock: Clock): PermissionEvent | null {
   const requestId = readNonEmptyString(payload, "id")
   const sessionId = readNonEmptyString(payload, "sessionID")

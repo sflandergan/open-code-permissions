@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { adaptCompletion, adaptEvent, createOnceWarner } from "../event-adapter"
+import { adaptCompletion, adaptEvent } from "../event-adapter"
 import {
   askedEvent,
   askedEventWithDataPayload,
@@ -27,7 +27,7 @@ import {
 
 describe("adaptEvent", () => {
   describe("permission.asked", () => {
-    test("adapts a valid asked event with exact normalized values", () => {
+    test("normalizes a valid asked event", () => {
       expect(adaptEvent(askedEvent, fixedClock)).toEqual({
         kind: "asked",
         requestId: "per_01J",
@@ -55,7 +55,7 @@ describe("adaptEvent", () => {
       })
     })
 
-    test("accepts a payload delivered under the event's data field with exact values", () => {
+    test("reads the asked payload from the legacy data envelope when properties is absent", () => {
       expect(adaptEvent(askedEventWithDataPayload, fixedClock)).toEqual({
         kind: "asked",
         requestId: "per_data",
@@ -106,17 +106,6 @@ describe("adaptEvent", () => {
       adaptEvent(malformedAskedEvent, fixedClock, callback)
       adaptEvent(unrelatedEvent, fixedClock, callback)
       expect(calls).toEqual([])
-    })
-  })
-
-  describe("createOnceWarner", () => {
-    test("emits once per process across repeated unsupported events", () => {
-      const emitted: string[] = []
-      const warner = createOnceWarner((type) => emitted.push(type))
-      warner("permission.v2.asked")
-      warner("permission.v2.asked")
-      warner("permission.v2.replied")
-      expect(emitted).toEqual(["permission.v2.asked"])
     })
   })
 

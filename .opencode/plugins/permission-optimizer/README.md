@@ -12,6 +12,8 @@ OpenCode auto-loads `.opencode/plugins/*.{js,ts}` entries. This plugin registers
 
 Events are correlated into idempotent lifecycles keyed by the OpenCode `request_id`.
 
+Reply cascade classification was verified against OpenCode 1.18.11.
+
 ## Database
 
 The observation database is created in the user's application-data directory:

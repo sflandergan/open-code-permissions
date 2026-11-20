@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
-import { createLifecycleProcessor, type IdentityResolver, type WarningSink } from "../lifecycle"
+import { createPermissionEventCorrelator, type IdentityResolver, type WarningSink } from "../permission-event-correlator"
 import { createObservationStore } from "../store"
 import type { AgentResolver } from "../runtime-context"
 import type { PermissionEvent, CompletionEvent } from "../model"
@@ -60,12 +60,12 @@ const mockIdentityResolver: IdentityResolver = () => ({
   commonDirectory: null,
 })
 
-describe("createLifecycleProcessor", () => {
+describe("createPermissionEventCorrelator", () => {
   let tmpDir: string
   let dbPath: string
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "lifecycle-"))
+    tmpDir = mkdtempSync(join(tmpdir(), "permission-event-correlator-"))
     dbPath = join(tmpDir, "obs.sqlite")
   })
 
@@ -75,11 +75,11 @@ describe("createLifecycleProcessor", () => {
 
   test("counts a once approval followed by a successful completion as a qualifying approval", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent({ reply: "once" }))
-    await processor.handleCompletion(makeCompletion())
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent({ reply: "once" }))
+    await correlator.handleCompletion(makeCompletion())
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -98,9 +98,9 @@ describe("createLifecycleProcessor", () => {
     execFileSync("git", ["remote", "add", "origin", "git@github.com:example/repo.git"], { cwd: repoDirectory })
 
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, repoDirectory)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, repoDirectory)
 
-    await processor.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeAskedEvent())
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -114,11 +114,11 @@ describe("createLifecycleProcessor", () => {
 
   test("counts an always approval followed by a successful completion as a qualifying approval", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent({ reply: "always" }))
-    await processor.handleCompletion(makeCompletion())
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent({ reply: "always" }))
+    await correlator.handleCompletion(makeCompletion())
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -131,10 +131,10 @@ describe("createLifecycleProcessor", () => {
 
   test("counts no qualifying approval for a rejected request", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent({ reply: "reject" }))
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent({ reply: "reject" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -147,7 +147,7 @@ describe("createLifecycleProcessor", () => {
 
   test("records an automatic always reply for an unobserved request as always-derived", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
     // The asked event was never observed, so seed the observation directly.
     store.upsertAsked({
@@ -163,7 +163,7 @@ describe("createLifecycleProcessor", () => {
       askedAt: VALID_UTC,
     })
 
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_cascade", reply: "always" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_cascade", reply: "always" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -175,7 +175,7 @@ describe("createLifecycleProcessor", () => {
 
   test("records an automatic rejection for an unobserved request as rejection-derived", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
     store.upsertAsked({
       requestId: "req_cascade_rej",
@@ -190,7 +190,7 @@ describe("createLifecycleProcessor", () => {
       askedAt: VALID_UTC,
     })
 
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_cascade_rej", reply: "reject" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_cascade_rej", reply: "reject" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -202,11 +202,11 @@ describe("createLifecycleProcessor", () => {
 
   test("marks a bash completion with exit code zero as success", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent())
-    await processor.handleCompletion(makeCompletion({ exitCode: 0 }))
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent())
+    await correlator.handleCompletion(makeCompletion({ exitCode: 0 }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -219,11 +219,11 @@ describe("createLifecycleProcessor", () => {
 
   test("marks a bash completion with a nonzero exit code as failure", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent())
-    await processor.handleCompletion(makeCompletion({ execution: "failure", exitCode: 1 }))
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent())
+    await correlator.handleCompletion(makeCompletion({ execution: "failure", exitCode: 1 }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -237,11 +237,11 @@ describe("createLifecycleProcessor", () => {
 
   test("records a non-bash tool completion as success with no exit code", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent({ permission: "edit" }))
-    await processor.handleEvent(makeRepliedEvent())
-    await processor.handleCompletion(makeCompletion({ tool: "edit", exitCode: null }))
+    await correlator.handleEvent(makeAskedEvent({ permission: "edit" }))
+    await correlator.handleEvent(makeRepliedEvent())
+    await correlator.handleCompletion(makeCompletion({ tool: "edit", exitCode: null }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -255,10 +255,10 @@ describe("createLifecycleProcessor", () => {
 
   test("leaves the observation uncompleted when the session or call does not match", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleCompletion(makeCompletion({ sessionId: "other_session", callId: "other_call" }))
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleCompletion(makeCompletion({ sessionId: "other_session", callId: "other_call" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -268,14 +268,14 @@ describe("createLifecycleProcessor", () => {
     store.close()
   })
 
-  test("records a null agent and no qualifying approval when attribution is missing", async () => {
+  test("records a null agent and no qualifying approval when the observation origin is missing", async () => {
     const failingResolver: AgentResolver = { async resolve() { return null } }
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, failingResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, failingResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent())
-    await processor.handleCompletion(makeCompletion())
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent())
+    await correlator.handleCompletion(makeCompletion())
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -288,10 +288,10 @@ describe("createLifecycleProcessor", () => {
 
   test("preserves the first-seen asked time on duplicate delivery", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeAskedEvent({ receivedAt: VALID_UTC_2 }))
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeAskedEvent({ receivedAt: VALID_UTC_2 }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -303,9 +303,9 @@ describe("createLifecycleProcessor", () => {
 
   test("records multiple patterns as one observation with ordered inputs", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent({ patterns: ["git status", "git diff"] }))
+    await correlator.handleEvent(makeAskedEvent({ patterns: ["git status", "git diff"] }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -321,22 +321,22 @@ describe("createLifecycleProcessor", () => {
 
   test("records a sibling's automatic always reply as always-derived after a human always approval", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
       patterns: ["git status"],
       always: ["git status"],
     }))
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_B",
       patterns: ["git status"],
       always: [],
       callId: "call_002",
     }))
 
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "always" }))
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "always" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "always" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "always" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -351,29 +351,29 @@ describe("createLifecycleProcessor", () => {
 
   test("records only sibling requests covered by a human always approval as always-derived", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
       patterns: ["git status"],
       always: ["git status"],
     }))
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_B",
       patterns: ["git status"],
       always: [],
       callId: "call_002",
     }))
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_C",
       patterns: ["git diff"],
       always: [],
       callId: "call_003",
     }))
 
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "always" }))
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "always" }))
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_C", reply: "once" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "always" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "always" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_C", reply: "once" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -389,22 +389,22 @@ describe("createLifecycleProcessor", () => {
 
   test("records an automatic rejection as rejection-derived after a human rejection", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
       patterns: ["git status"],
       always: ["git status"],
     }))
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_B",
       patterns: ["git status"],
       always: [],
       callId: "call_002",
     }))
 
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "reject" }))
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "reject" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "reject" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "reject" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -416,24 +416,25 @@ describe("createLifecycleProcessor", () => {
     store.close()
   })
 
-  test("records a mismatched automatic reply as unresolved", async () => {
+  // OpenCode answers requests covered by an earlier always reply itself; any other reply on such a request is unexpected and is recorded as unresolved rather than counted as a decision.
+  test("records an unexpected reply to a request covered by an earlier always reply as unresolved", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
       patterns: ["git status"],
       always: ["git status"],
     }))
-    await processor.handleEvent(makeAskedEvent({
+    await correlator.handleEvent(makeAskedEvent({
       requestId: "req_B",
       patterns: ["git status"],
       always: [],
       callId: "call_002",
     }))
 
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "always" }))
-    await processor.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "once" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_A", reply: "always" }))
+    await correlator.handleEvent(makeRepliedEvent({ requestId: "req_B", reply: "once" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -445,10 +446,10 @@ describe("createLifecycleProcessor", () => {
 
   test("applies a reply that arrives before the asked event", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeRepliedEvent({ reply: "always" }))
-    await processor.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent({ reply: "always" }))
+    await correlator.handleEvent(makeAskedEvent())
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -460,11 +461,11 @@ describe("createLifecycleProcessor", () => {
 
   test("applies a completion that arrives before the asked event", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleCompletion(makeCompletion())
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent())
+    await correlator.handleCompletion(makeCompletion())
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent())
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -477,11 +478,11 @@ describe("createLifecycleProcessor", () => {
 
   test("preserves the first-known decision when replies conflict", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent({ reply: "once" }))
-    await processor.handleEvent(makeRepliedEvent({ reply: "always" }))
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent({ reply: "once" }))
+    await correlator.handleEvent(makeRepliedEvent({ reply: "always" }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -493,12 +494,12 @@ describe("createLifecycleProcessor", () => {
 
   test("preserves the first-known completion when completions conflict", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
-    await processor.handleEvent(makeRepliedEvent())
-    await processor.handleCompletion(makeCompletion())
-    await processor.handleCompletion(makeCompletion({ execution: "failure", exitCode: 1, completedAt: VALID_UTC_3 }))
+    await correlator.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeRepliedEvent())
+    await correlator.handleCompletion(makeCompletion())
+    await correlator.handleCompletion(makeCompletion({ execution: "failure", exitCode: 1, completedAt: VALID_UTC_3 }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
@@ -514,12 +515,12 @@ describe("createLifecycleProcessor", () => {
     const sink: WarningSink = (msg) => warnings.push(msg)
     const store = createObservationStore(dbPath)
     store.close()
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
 
-    await processor.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeAskedEvent())
 
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain("permission-lifecycle")
+    expect(warnings[0]).toContain("permission-event-correlator")
     expect(warnings[0]).toContain("handleEvent")
     expect(warnings[0]).toContain("req_001")
     // Must NOT contain exact input patterns or raw event data
@@ -532,9 +533,9 @@ describe("createLifecycleProcessor", () => {
     const sink: WarningSink = (msg) => warnings.push(msg)
     const store = createObservationStore(dbPath)
     store.close()
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
 
-    await processor.handleCompletion(makeCompletion())
+    await correlator.handleCompletion(makeCompletion())
 
     expect(warnings).toHaveLength(1)
     expect(warnings[0]).toContain("handleCompletion")
@@ -546,20 +547,20 @@ describe("createLifecycleProcessor", () => {
     const warnings: string[] = []
     const sink: WarningSink = (msg) => warnings.push(msg)
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
 
-    // The adapter rejects these events, so they never reach the processor.
+    // The adapter rejects these events, so they never reach the correlator.
     expect(warnings).toHaveLength(0)
     store.close()
   })
 
   test("processes concurrent events one at a time without interleaving", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
     const promises: Promise<void>[] = []
     for (let i = 0; i < 10; i++) {
-      promises.push(processor.handleEvent(makeAskedEvent({
+      promises.push(correlator.handleEvent(makeAskedEvent({
         requestId: `req_${i}`,
         patterns: [`pattern_${i}`],
         callId: `call_${i}`,
@@ -577,14 +578,14 @@ describe("createLifecycleProcessor", () => {
 
   test("preserves a known agent when a duplicate asked event resolves none", async () => {
     const store = createObservationStore(dbPath)
-    const processor = createLifecycleProcessor(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
 
-    await processor.handleEvent(makeAskedEvent())
+    await correlator.handleEvent(makeAskedEvent())
     // A later asked event that resolves no agent must not erase the known one.
     const failingResolver: AgentResolver = { async resolve() { return null } }
-    const processor2 = createLifecycleProcessor(store, failingResolver, "/project", mockIdentityResolver)
+    const correlator2 = createPermissionEventCorrelator(store, failingResolver, "/project", mockIdentityResolver)
 
-    await processor2.handleEvent(makeAskedEvent({ receivedAt: VALID_UTC_2 }))
+    await correlator2.handleEvent(makeAskedEvent({ receivedAt: VALID_UTC_2 }))
 
     const db = (await import("bun:sqlite")).Database
     const conn = new db(dbPath)
