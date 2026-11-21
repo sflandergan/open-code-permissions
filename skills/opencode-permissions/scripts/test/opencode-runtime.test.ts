@@ -8,6 +8,7 @@ import type { OpenCodeRuntimeDeps } from "../lib/opencode-runtime"
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures")
 
+// Captured `opencode agent list` output.
 const AGENT_LIST_FIXTURE = readFileSync(join(fixturesDir, "agent-list.txt"), "utf8")
 const DEBUG_CONFIG_FIXTURE = readFileSync(join(fixturesDir, "debug-config.json"), "utf8")
 const DEBUG_AGENT_FIXTURE = readFileSync(join(fixturesDir, "debug-agent.json"), "utf8")
@@ -219,7 +220,7 @@ test("a header-only agent block reports an empty rule list", async () => {
   expect(agents[1].rules).toEqual([{ permission: "read", action: "allow", pattern: "*" }])
 })
 
-test("a first output cut inside the final permission array triggers one retry", async () => {
+test("retries the agent listing once when the first output is truncated", async () => {
   const { runtime, fake } = createFixtureRuntime({
     "opencode agent list": [TRUNCATED_AGENT_LIST, AGENT_LIST_FIXTURE],
   })

@@ -33,13 +33,14 @@ const DEBUG_AGENT_FIXTURE = readFileSync(join(fixturesDir, "debug-agent.json"), 
 const OPENCODE_JSON_FIXTURE = readFileSync(join(fixturesDir, "opencode.json"), "utf8")
 const AGENT_MD_FIXTURE = readFileSync(join(fixturesDir, "agent.md"), "utf8")
 
-const FAKE_GIT_SCRIPT = `#!/bin/sh
-if [ -n "\${FAKE_GIT_TOPLEVEL:-}" ]; then
-  printf '%s\\n' "\$FAKE_GIT_TOPLEVEL"
-  exit 0
-fi
-printf 'fatal: not a git repository\\n' >&2
-exit 128
+// The inspector sanitizes the environment before launching opencode, so this
+// launcher supplies the fake's argv log path and fixture directory from its
+// own directory instead of relying on inherited fake-only variables.
+const FAKE_OPENCODE_LAUNCHER = `#!/bin/sh
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+FAKE_OPENCODE_ARGV_LOG="$script_dir/opencode-argv.log" \\
+FAKE_OPENCODE_FIXTURE_DIR="$script_dir" \\
+exec bun "$script_dir/fake-opencode.ts" "$@"
 `
 
 /** A hermetic wrapper sandbox: fixture worktree, fake executables, and copied skill. */
@@ -83,40 +84,24 @@ interface EffectiveReport {
 }
 
 /**
- * Create the fake `git` and `opencode` executables plus the runtime fixtures
- * they serve. The fake opencode records its argv to a log file and answers
+ * Copy the fake `git` and `opencode` executables into the sandbox bin
+ * directory and write the runtime fixtures they serve. The fake opencode
+ * records its argv to a log file named by its environment and answers
  * `agent list`, `debug config`, and `debug agent <name>` with the captured
  * fixture world; any `--version` probe fails because the inspector must never
  * ask for one.
  */
 function createFakeExecutables(binDir: string): void {
   const gitPath = join(binDir, "git")
-  writeFileSync(gitPath, FAKE_GIT_SCRIPT)
+  cpSync(join(fixturesDir, "fake-git.sh"), gitPath)
   chmodSync(gitPath, 0o755)
 
-  const argvLogPath = join(binDir, "opencode-argv.log")
-  const opencodeScript = [
-    "#!/usr/bin/env bun",
-    'const fs = require("node:fs")',
-    "const argv = process.argv.slice(2)",
-    `fs.writeFileSync(${JSON.stringify(argvLogPath)}, JSON.stringify(argv) + "\\n")`,
-    'const key = argv.join(" ")',
-    'if (key === "agent list") {',
-    `  process.stdout.write(fs.readFileSync(${JSON.stringify(join(binDir, "agent-list.txt"))}, "utf8"))`,
-    '} else if (key === "debug config") {',
-    `  process.stdout.write(fs.readFileSync(${JSON.stringify(join(binDir, "debug-config.json"))}, "utf8"))`,
-    '} else if (argv[0] === "debug" && argv[1] === "agent") {',
-    `  const record = JSON.parse(fs.readFileSync(${JSON.stringify(join(binDir, "debug-agent.json"))}, "utf8"))`,
-    "  record.name = argv[2]",
-    "  process.stdout.write(JSON.stringify(record))",
-    '} else {',
-    '  process.stderr.write("no canned response for " + key + "\\n")',
-    "  process.exit(1)",
-    "}",
-    "",
-  ].join("\n")
+  const fakeOpencodePath = join(binDir, "fake-opencode.ts")
+  cpSync(join(fixturesDir, "fake-opencode.ts"), fakeOpencodePath)
+  chmodSync(fakeOpencodePath, 0o755)
+
   const opencodePath = join(binDir, "opencode")
-  writeFileSync(opencodePath, opencodeScript)
+  writeFileSync(opencodePath, FAKE_OPENCODE_LAUNCHER)
   chmodSync(opencodePath, 0o755)
 
   writeFileSync(join(binDir, "agent-list.txt"), AGENT_LIST_FIXTURE)
