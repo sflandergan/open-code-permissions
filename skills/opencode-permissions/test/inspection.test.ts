@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test"
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { createAgentListReport, createEffectivePolicyReport } from "../lib/inspection"
-import type { EffectivePolicyReport, EffectiveRule } from "../lib/types"
+import { createAgentListReport, createEffectivePolicyReport } from "../src/lib/inspection"
+import type { EffectivePolicyReport, EffectiveRule } from "../src/lib/types"
 import {
   captureRejection,
   createFakeRuntime,

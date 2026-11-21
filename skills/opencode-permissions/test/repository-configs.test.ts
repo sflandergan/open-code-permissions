@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { createAgentListReport, createEffectivePolicyReport } from "../lib/inspection"
+import { createAgentListReport, createEffectivePolicyReport } from "../src/lib/inspection"
 import {
   captureRejection,
   createFakeRuntime,

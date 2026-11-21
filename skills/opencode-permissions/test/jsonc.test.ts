@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { parseJsonc } from "../lib/jsonc"
+import { parseJsonc } from "../src/lib/jsonc"
 import { captureThrown } from "./helpers/inspection-fixtures"
 
 test("line comments are ignored while comment markers inside strings are preserved", () => {

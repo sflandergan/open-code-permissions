@@ -16,11 +16,11 @@ describe("cross-area imports", () => {
   it("rejects a plugin module that imports a published skill", () => {
     const files = [
       sourceFile(".opencode/plugins/permission-optimizer/src/store.ts", [
-        "../../../../skills/opencode-permissions/scripts/lib/jsonc",
+        "../../../../skills/opencode-permissions/src/lib/jsonc",
       ]),
     ]
     expect(findCrossAreaImports(files)).toEqual([
-      ".opencode/plugins/permission-optimizer/src/store.ts imports ../../../../skills/opencode-permissions/scripts/lib/jsonc from opencode-permissions-skill",
+      ".opencode/plugins/permission-optimizer/src/store.ts imports ../../../../skills/opencode-permissions/src/lib/jsonc from opencode-permissions-skill",
     ])
   })
 

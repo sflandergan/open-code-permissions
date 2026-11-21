@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
-import { toAbsolutePath } from "../../lib/absolute-path"
-import type { AbsolutePath } from "../../lib/absolute-path"
+import { toAbsolutePath } from "../../src/lib/absolute-path"
+import type { AbsolutePath } from "../../src/lib/absolute-path"
 import type {
   AgentListEntry,
   EffectivePolicyReport,
@@ -10,7 +10,7 @@ import type {
   OpenCodeRuntime,
   ResolvedAgentConfig,
   ResolvedConfig,
-} from "../../lib/types"
+} from "../../src/lib/types"
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures")
 

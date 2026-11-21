@@ -3,8 +3,8 @@ import { EventEmitter } from "node:events"
 import { readFileSync, writeSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
-import { createOpenCodeRuntime } from "../lib/opencode-runtime"
-import type { OpenCodeRuntimeDeps } from "../lib/opencode-runtime"
+import { createOpenCodeRuntime } from "../src/lib/opencode-runtime"
+import type { OpenCodeRuntimeDeps } from "../src/lib/opencode-runtime"
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures")
 

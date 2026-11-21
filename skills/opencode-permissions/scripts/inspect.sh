@@ -66,7 +66,7 @@ if [ "${explicit_output_file}" = true ] && { [ -e "${output_file}" ] || [ -L "${
   exit 1
 fi
 
-if output="$(bun "${script_dir}/inspect.ts" "${inspect_args[@]}")"; then
+if output="$(bun "${script_dir}/../src/inspect.ts" "${inspect_args[@]}")"; then
   :
 else
   status=$?

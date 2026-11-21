@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { parseFrontmatterPermission } from "../lib/agent-frontmatter"
+import { parseFrontmatterPermission } from "../src/lib/agent-frontmatter"
 import { captureThrown } from "./helpers/inspection-fixtures"
 
 test("nested permission mappings accept blank and comment lines before their children", () => {

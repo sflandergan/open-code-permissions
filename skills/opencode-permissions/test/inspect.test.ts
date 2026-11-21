@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test"
 import { mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
-import { createAgentListReport, createEffectivePolicyReport } from "../lib/inspection"
-import type { AgentListReport, EffectivePolicyReport, EffectiveRule, RuleOrigin, RuleOverride } from "../lib/types"
-import { parseArgs, renderEffectivePolicy, renderListAgents, resolveWrapperRepositoryRoot } from "../inspect"
+import { createAgentListReport, createEffectivePolicyReport } from "../src/lib/inspection"
+import type { AgentListReport, EffectivePolicyReport, EffectiveRule, RuleOrigin, RuleOverride } from "../src/lib/types"
+import { parseArgs, renderEffectivePolicy, renderListAgents, resolveWrapperRepositoryRoot } from "../src/inspect"
 import {
   AGENT_MD_FIXTURE,
   captureThrown,

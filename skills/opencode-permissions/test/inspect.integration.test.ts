@@ -16,14 +16,14 @@ import {
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 
-const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..")
+const SKILL_DIR = join(dirname(fileURLToPath(import.meta.url)), "..")
 const BUN_EXECUTABLE = process.execPath
 const BUN_DIR = dirname(BUN_EXECUTABLE)
 
 // Sandboxes live under the repository's ignored .temp/ directory so every
 // execution stays repository-local and never touches the operating system
 // temporary directory; cleanup removes only each test's own directory.
-const TEMP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", ".temp")
+const TEMP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".temp")
 mkdirSync(TEMP_DIR, { recursive: true })
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures")
@@ -428,7 +428,7 @@ test("arguments containing spaces or shell substitution reach the runtime as lit
 test("running the inspector directly without the wrapper's repository root is rejected", async () => {
   const sandbox = await createSandbox("global")
   try {
-    const inspect = join(sandbox.skillDir, "scripts", "inspect.ts")
+    const inspect = join(sandbox.skillDir, "src", "inspect.ts")
     const baseEnv = buildEnv(sandbox, { gitToplevel: sandbox.worktree })
     const envWithoutRoot = { ...baseEnv }
     delete envWithoutRoot.OPENCODE_PERMISSIONS_REPOSITORY_ROOT
