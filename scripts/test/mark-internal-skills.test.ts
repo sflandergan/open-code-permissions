@@ -66,6 +66,31 @@ describe("internal skill marking", () => {
     )
   })
 
+  it("replaces an explicit internal false with internal true instead of adding a second key", () => {
+    const explicitlyNotInternal = [
+      "---",
+      "name: bugfix",
+      "metadata:",
+      "  internal: false",
+      "---",
+      "",
+      "You are the agent.",
+      "",
+    ].join("\n")
+    expect(markSkillInternal(explicitlyNotInternal)).toBe(
+      [
+        "---",
+        "name: bugfix",
+        "metadata:",
+        "  internal: true",
+        "---",
+        "",
+        "You are the agent.",
+        "",
+      ].join("\n"),
+    )
+  })
+
   it("returns the original document when a skill is already internal", () => {
     expect(markSkillInternal(MARKED)).toBe(MARKED)
     expect(isSkillInternal(MARKED)).toBe(true)

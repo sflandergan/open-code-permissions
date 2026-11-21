@@ -22,15 +22,31 @@ export function isSkillInternal(content: string): boolean {
   if (metadataIndex === -1) {
     return lines.some((line) => /^metadata\.internal:\s*true\s*$/.test(line))
   }
+  const end = metadataBlockEnd(lines, metadataIndex)
+  return lines.slice(metadataIndex + 1, end).some((line) => /^\s+internal:\s*true\s*$/.test(line))
+}
+
+function metadataBlockEnd(lines: string[], metadataIndex: number): number {
   let end = metadataIndex + 1
   while (end < lines.length && /^\s+/.test(lines[end])) end++
-  return lines.slice(metadataIndex + 1, end).some((line) => /^\s+internal:\s*true\s*$/.test(line))
+  return end
+}
+
+function markMetadataInternal(lines: string[], metadataIndex: number): string[] {
+  const end = metadataBlockEnd(lines, metadataIndex)
+  const internalIndex = lines.findIndex(
+    (line, index) => index > metadataIndex && index < end && /^\s+internal:/.test(line),
+  )
+  if (internalIndex === -1) return [...lines.slice(0, end), "  internal: true", ...lines.slice(end)]
+  const indent = /^\s*/.exec(lines[internalIndex])?.[0] ?? "  "
+  return lines.map((line, index) => (index === internalIndex ? `${indent}internal: true` : line))
 }
 
 /**
  * Add `metadata.internal: true` to a skill's frontmatter, merging into an
- * existing `metadata` block and leaving every other key untouched. Returns
- * the content unchanged when the marker is already present. Throws when the
+ * existing `metadata` block and leaving every other key untouched. An existing
+ * `internal` entry is replaced so the block keeps a single key. Returns the
+ * content unchanged when the marker is already present. Throws when the
  * document has no `---` frontmatter block.
  */
 export function markSkillInternal(content: string): string {
@@ -40,13 +56,8 @@ export function markSkillInternal(content: string): string {
   const [, open, body, close, rest] = match
   const lines = body.split(/\r?\n/)
   const metadataIndex = lines.findIndex((line) => /^metadata:\s*$/.test(line))
-  if (metadataIndex === -1) {
-    const updated = [...lines, "metadata:", "  internal: true"]
-    return `${open}${updated.join("\n")}${close}${rest}`
-  }
-  let end = metadataIndex + 1
-  while (end < lines.length && /^\s+/.test(lines[end])) end++
-  const updated = [...lines.slice(0, end), "  internal: true", ...lines.slice(end)]
+  const updated =
+    metadataIndex === -1 ? [...lines, "metadata:", "  internal: true"] : markMetadataInternal(lines, metadataIndex)
   return `${open}${updated.join("\n")}${close}${rest}`
 }
 
