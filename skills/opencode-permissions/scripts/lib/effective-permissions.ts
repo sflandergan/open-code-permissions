@@ -1,35 +1,38 @@
 import { agentSourceFile, loadAgentPermission } from "./repository-configs"
 import { inspectionError } from "./errors"
+import { isPermissionAction, PERMISSION_ACTIONS } from "./types"
+import type { AbsolutePath } from "./absolute-path"
 import type {
-  AgentStatus,
   DeclarationTuple,
-  EffectiveDeclaration,
+  EffectivePermission,
+  PermissionAction,
   RepositoryConfig,
   RuleOverride,
 } from "./types"
 
-const VALID_ACTIONS = new Set(["allow", "ask", "deny"])
-
-/** One declaration source layer with its ordered permission tuples. */
-interface DeclarationEntry {
+/** One permission source layer with its ordered declaration tuples. */
+interface PermissionLayerEntry {
   origin: RuleOverride
   tuples: DeclarationTuple[]
 }
 
 /**
  * Merge the repository-shared permission declarations of every config file
- * into the effective declarations in application order. A later declaration
- * of the same (permission, pattern) key replaces the earlier one: the later
+ * into effective permissions in application order. A later declaration of the
+ * same (permission, pattern) key replaces the earlier one: the later
  * declaration becomes the origin and the earlier origin joins the override
  * chain in application order.
+ *
+ * Rejects a malformed permission value with `INSPECTION_SOURCE_MALFORMED` and
+ * the source file in the message.
  */
-export function mergeSharedDeclarations(repositoryConfigs: RepositoryConfig[]): EffectiveDeclaration[] {
-  return mergeLayerDeclarations(
+export function mergeSharedPermissions(repositoryConfigs: RepositoryConfig[]): EffectivePermission[] {
+  return mergeLayerPermissions(
     repositoryConfigs.map((source) => ({
-      origin: { scope: "shared", source: source.path },
-      tuples: convertPermissionDeclarations(
+      origin: { scope: "shared", source: source.relativePath },
+      tuples: readPermissionDeclarations(
         source.value.permission,
-        `${source.path} permission`,
+        `${source.relativePath} permission`,
         "INSPECTION_SOURCE_MALFORMED",
       ),
     })),
@@ -39,40 +42,44 @@ export function mergeSharedDeclarations(repositoryConfigs: RepositoryConfig[]): 
 /**
  * Merge the agent-specific permission declarations for one agent in OpenCode
  * application order - repository config agent entries first, then the agent
- * md frontmatter - into effective declarations with the same same-key
- * semantics as the shared layer.
+ * md frontmatter - into effective permissions with the same same-key semantics
+ * as the shared layer. `repositoryRoot` is absolute so the agent source file
+ * lookup stays inside the inspected worktree.
+ *
+ * Rejects a malformed permission value with `INSPECTION_SOURCE_MALFORMED` and
+ * the source file in the message.
  */
-export function mergeAgentDeclarations(
+export function mergeAgentPermissions(
   repositoryConfigs: RepositoryConfig[],
   name: string,
-  repositoryRoot: string,
-): EffectiveDeclaration[] {
-  const entries: DeclarationEntry[] = repositoryConfigs.map((source) => ({
-    origin: { scope: "agent", source: source.path },
-    tuples: convertPermissionDeclarations(
+  repositoryRoot: AbsolutePath,
+): EffectivePermission[] {
+  const entries: PermissionLayerEntry[] = repositoryConfigs.map((source) => ({
+    origin: { scope: "agent", source: source.relativePath },
+    tuples: readPermissionDeclarations(
       agentPermissionOf(source.value.agent, name),
-      `${source.path} agent ${name} permission`,
+      `${source.relativePath} agent ${name} permission`,
       "INSPECTION_SOURCE_MALFORMED",
     ),
   }))
   entries.push({
     origin: { scope: "agent", source: `.opencode/agents/${name}.md` },
-    tuples: convertPermissionDeclarations(
+    tuples: readPermissionDeclarations(
       loadAgentPermission(agentSourceFile(repositoryRoot, name)),
       `.opencode/agents/${name}.md permission`,
       "INSPECTION_SOURCE_MALFORMED",
     ),
   })
-  return mergeLayerDeclarations(entries)
+  return mergeLayerPermissions(entries)
 }
 
 /**
- * Merge declaration entries by (permission, pattern) key, keeping the first
- * declaration order and letting every later declaration replace the earlier
- * one while preserving the earlier origin in the override chain.
+ * Merge permission layer entries by (permission, pattern) key, keeping the
+ * first declaration order and letting every later declaration replace the
+ * earlier one while preserving the earlier origin in the override chain.
  */
-function mergeLayerDeclarations(entries: DeclarationEntry[]): EffectiveDeclaration[] {
-  const merged = new Map<string, EffectiveDeclaration>()
+function mergeLayerPermissions(entries: PermissionLayerEntry[]): EffectivePermission[] {
+  const merged = new Map<string, EffectivePermission>()
   for (const entry of entries) {
     for (const tuple of entry.tuples) {
       const key = JSON.stringify([tuple.permission, tuple.pattern])
@@ -90,10 +97,12 @@ function mergeLayerDeclarations(entries: DeclarationEntry[]): EffectiveDeclarati
 }
 
 /**
- * Convert a permission declaration into rule tuples. A scalar value becomes
- * the `*` pattern fallback; a map preserves its ordered pattern entries.
+ * Read a permission declaration into rule tuples. A scalar value becomes the
+ * `*` pattern fallback; a map preserves its ordered pattern entries. Rejects a
+ * value that is not a permission object or that carries an unsupported action
+ * with `code` and the context in the message.
  */
-export function convertPermissionDeclarations(value: unknown, context: string, code: string): DeclarationTuple[] {
+export function readPermissionDeclarations(value: unknown, context: string, code: string): DeclarationTuple[] {
   if (value === undefined || value === null) return []
   if (typeof value !== "object" || Array.isArray(value)) {
     throw inspectionError(code, `${context}: expected a permission object, got ${Array.isArray(value) ? "an array" : typeof value}`)
@@ -117,32 +126,24 @@ export function convertPermissionDeclarations(value: unknown, context: string, c
 }
 
 /**
- * Validate one permission action against allow|ask|deny and return it.
+ * Validate one permission action against the runtime's accepted actions and
+ * return it narrowed to a `PermissionAction`.
  */
-function validateAction(action: unknown, context: string, code: string, permission: string): string {
-  if (typeof action !== "string" || !VALID_ACTIONS.has(action)) {
+function validateAction(action: unknown, context: string, code: string, permission: string): PermissionAction {
+  if (!isPermissionAction(action)) {
     throw inspectionError(
       code,
-      `${context}: permission "${permission}" has invalid action ${JSON.stringify(action)}; expected one of allow|ask|deny`,
+      `${context}: permission "${permission}" has invalid action ${JSON.stringify(action)}; expected one of ${PERMISSION_ACTIONS.join("|")}`,
     )
   }
   return action
 }
 
 /**
- * Map the runtime's optional native flag to the report status; an absent flag
- * is reported as null rather than guessed.
- */
-export function nativeStatus(native: boolean | undefined): AgentStatus {
-  if (native === undefined) return null
-  return native ? "native" : "custom"
-}
-
-/**
  * Read the permission declaration of one agent entry in a resolved config
  * object without assuming the entry shape.
  */
-function agentPermissionOf(agent: unknown, name: string): unknown {
+export function agentPermissionOf(agent: unknown, name: string): unknown {
   if (typeof agent !== "object" || agent === null || Array.isArray(agent)) return undefined
   const definition = (agent as Record<string, unknown>)[name]
   if (typeof definition !== "object" || definition === null || Array.isArray(definition)) return undefined

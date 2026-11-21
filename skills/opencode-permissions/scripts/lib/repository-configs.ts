@@ -1,9 +1,11 @@
 import { lstatSync, readFileSync } from "node:fs"
 import type { Stats } from "node:fs"
 import { isAbsolute, join, relative } from "node:path"
+import { toAbsolutePath } from "./absolute-path"
 import { parseJsonc } from "./jsonc"
-import { parseFrontmatterPermission } from "./frontmatter"
+import { parseFrontmatterPermission } from "./agent-frontmatter"
 import { inspectionError } from "./errors"
+import type { AbsolutePath } from "./absolute-path"
 import type { PermissionDeclarations, RepositoryConfig } from "./types"
 
 const REPOSITORY_CONFIG_PATH = "opencode.json"
@@ -13,12 +15,13 @@ const AGENTS_DIRECTORY = ".opencode/agents"
 /**
  * Read and parse the repository `opencode.json` and `opencode.jsonc` files in
  * OpenCode load order - JSON first, JSONC second - keeping each existing
- * file's exact name with its parsed value so declarations never lose their
- * source path. Both files are parsed as JSONC (comments and trailing commas
- * are valid), an absent file is skipped, and symlinked or structurally
- * unsupported files are rejected rather than followed or rewritten.
+ * file's repository-relative name for reports, its absolute path, and its
+ * parsed value so declarations never lose their source path. Both files are
+ * parsed as JSONC (comments and trailing commas are valid), an absent file is
+ * skipped, and symlinked or structurally unsupported files are rejected
+ * rather than followed or rewritten.
  */
-export function loadRepositoryConfigs(repositoryRoot: string): RepositoryConfig[] {
+export function loadRepositoryConfigs(repositoryRoot: AbsolutePath): RepositoryConfig[] {
   const sources: RepositoryConfig[] = []
   for (const fileName of [REPOSITORY_CONFIG_PATH, REPOSITORY_JSONC_PATH]) {
     const source = loadRepositoryConfigFile(repositoryRoot, fileName)
@@ -32,19 +35,19 @@ export function loadRepositoryConfigs(repositoryRoot: string): RepositoryConfig[
  * Rejects malformed JSONC and structurally unsupported values with the
  * source path.
  */
-function loadRepositoryConfigFile(repositoryRoot: string, fileName: string): RepositoryConfig | null {
-  const path = join(repositoryRoot, fileName)
-  const text = readRegularTextFile(path, `repository ${fileName}`)
+function loadRepositoryConfigFile(repositoryRoot: AbsolutePath, fileName: string): RepositoryConfig | null {
+  const absolutePath = toAbsolutePath(join(repositoryRoot, fileName), `${fileName} path`)
+  const text = readRegularTextFile(absolutePath, `repository ${fileName}`)
   if (text === null) return null
 
   let value: unknown
   try {
-    value = parseJsonc(text, path)
+    value = parseJsonc(text, absolutePath)
   } catch (cause) {
     throw inspectionError("INSPECTION_SOURCE_MALFORMED", messageOf(cause))
   }
-  const record = validateRepositoryConfigShape(value, path)
-  return { path: fileName, value: record }
+  const record = validateRepositoryConfigShape(value, absolutePath)
+  return { relativePath: fileName, absolutePath, value: record }
 }
 
 /**
@@ -73,14 +76,14 @@ function validateRepositoryConfigShape(value: unknown, path: string): Record<str
 }
 
 /**
- * Resolve the agent source file for one agent. The name must be a safe single
- * filename segment and the normalized candidate path must stay within
- * `.opencode/agents/`. The intermediate `.opencode` and `.opencode/agents`
- * directories must be real directories so the candidate cannot read through a
- * symlink; a missing chain means no candidate source (null), while a symlinked
- * or non-directory chain is rejected.
+ * Resolve the absolute agent source file for one agent. The name must be a
+ * safe single filename segment and the normalized candidate path must stay
+ * within `.opencode/agents/`. The intermediate `.opencode` and
+ * `.opencode/agents` directories must be real directories so the candidate
+ * cannot read through a symlink; a missing chain means no candidate source
+ * (null), while a symlinked or non-directory chain is rejected.
  */
-export function agentSourceFile(repositoryRoot: string, name: string): string | null {
+export function agentSourceFile(repositoryRoot: AbsolutePath, name: string): AbsolutePath | null {
   const agentsDirectory = join(repositoryRoot, AGENTS_DIRECTORY)
   const agentFile = join(agentsDirectory, `${safeAgentName(name)}.md`)
   const relativePath = relative(agentsDirectory, agentFile)
@@ -93,7 +96,7 @@ export function agentSourceFile(repositoryRoot: string, name: string): string | 
   if (realDirectoryOrNull(join(repositoryRoot, ".opencode")) === null || realDirectoryOrNull(agentsDirectory) === null) {
     return null
   }
-  return agentFile
+  return toAbsolutePath(agentFile, "agent source file")
 }
 
 /**
@@ -178,11 +181,11 @@ function missingSourcePath(cause: unknown, path: string, label: string): boolean
 }
 
 /**
- * Read the permission declaration from an agent md frontmatter; an empty
- * object when the file has no frontmatter, no permission section, or the
+ * Read the permission declaration from an absolute agent md source path; an
+ * empty object when the file has no frontmatter, no permission section, or the
  * agent source directory chain does not exist.
  */
-export function loadAgentPermission(agentFile: string | null): PermissionDeclarations {
+export function loadAgentPermission(agentFile: AbsolutePath | null): PermissionDeclarations {
   if (agentFile === null) return {}
   const text = readRegularTextFile(agentFile, "agent source")
   if (text === null) return {}

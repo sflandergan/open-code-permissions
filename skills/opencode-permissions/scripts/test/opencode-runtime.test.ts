@@ -12,8 +12,8 @@ const AGENT_LIST_FIXTURE = readFileSync(join(fixturesDir, "agent-list.txt"), "ut
 const DEBUG_CONFIG_FIXTURE = readFileSync(join(fixturesDir, "debug-config.json"), "utf8")
 const DEBUG_AGENT_FIXTURE = readFileSync(join(fixturesDir, "debug-agent.json"), "utf8")
 
-// The captured v1.18.10 output cut inside the final (ghost) permission array
-// with the closing bracket removed: the exact shape a truncated pipe produces.
+// The captured output cut inside the final (ghost) permission array with the
+// closing bracket removed: the exact shape a truncated pipe produces.
 const TRUNCATED_AGENT_LIST = AGENT_LIST_FIXTURE.replace(
   /ghost \(all\)[\s\S]*$/,
   'ghost (all)\n  [\n  {\n    "permission": "*",\n    "action": "allow",\n    "pattern": "*"\n  }\n',
@@ -395,13 +395,35 @@ test("an agent name mismatch is rejected with context", async () => {
   expect(error.message).toContain('got "ghost"')
 })
 
-test("an unavailable OpenCode executable is reported with operation and command context", async () => {
+test("reports the installation message when the command runner cannot find the executable", async () => {
   const enoent = Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" })
   const { runtime } = createFixtureRuntime({}, enoent)
   const error = await captureRejection(runtime.listAgents("/repo"))
   expect(error.code).toEqual("OPENCODE_UNAVAILABLE")
-  expect(error.message).toContain("listAgents")
-  expect(error.message).toContain("opencode agent list")
+  expect(error.message).toEqual("opencode is not installed or not on PATH; install OpenCode and retry")
+})
+
+test("reports that opencode is not installed when the executable is missing", async () => {
+  const spawn = ((): EventEmitter => {
+    const child = new EventEmitter() as EventEmitter & { stderr: EventEmitter }
+    child.stderr = new EventEmitter()
+    queueMicrotask(() => {
+      child.emit("error", Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" }))
+    })
+    return child
+  }) as unknown as SpawnRunner
+  const runtime = createOpenCodeRuntime({
+    execFile: (() => {
+      throw new Error("readResolvedConfig must use file-backed stdout")
+    }) as unknown as ExecFileRunner,
+    spawn,
+    env: { PATH: "/usr/bin:/bin", HOME: "/home/test" },
+    timeoutMs: 5_000,
+  })
+
+  const error = await captureRejection(runtime.readResolvedConfig("/repo"))
+  expect(error.code).toEqual("OPENCODE_UNAVAILABLE")
+  expect(error.message).toEqual("opencode is not installed or not on PATH; install OpenCode and retry")
 })
 
 test("a non-zero exit is reported with operation, command, and stderr context", async () => {

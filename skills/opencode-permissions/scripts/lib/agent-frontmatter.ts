@@ -1,7 +1,7 @@
 import { inspectionError } from "./errors"
-import type { PermissionDeclarations } from "./types"
+import { isPermissionAction, PERMISSION_ACTIONS } from "./types"
+import type { PermissionAction, PermissionDeclarations } from "./types"
 
-const VALID_ACTIONS = new Set(["allow", "ask", "deny"])
 const FRONTMATTER_DELIMITER = "---"
 
 /** One parsed frontmatter value: a scalar action or a nested mapping. */
@@ -140,10 +140,9 @@ function parseIndentedMapping(
 ): ParsedMappingState {
   const value: ParsedMapping = {}
   let i = startIndex
-  let consumed = 0
   while (i < frontmatter.length) {
     const line = frontmatter[i]
-    if (line.trim() === "" || line.trimStart().startsWith("#")) {
+    if (isMappingIgnorableLine(line)) {
       i++
       continue
     }
@@ -156,23 +155,44 @@ function parseIndentedMapping(
     i++
     if (parsed.hasValue) {
       value[parsed.key] = parseActionValue(parsed.value, context, parsed.key)
-      consumed = i - startIndex
       continue
     }
-    const childStart = firstNonEmptyLine(frontmatter, i)
-    if (childStart === -1) {
-      throw inspectionError("INSPECTION_SOURCE_MALFORMED", `${context}: "${parsed.key}" has no value`)
-    }
-    const childIndent = countIndent(frontmatter[childStart])
-    if (childIndent <= baseIndent) {
-      throw inspectionError("INSPECTION_SOURCE_MALFORMED", `${context}: "${parsed.key}" has no value`)
-    }
-    const child = parseIndentedMapping(frontmatter, childStart, childIndent, context)
+    const child = parseChildMapping(frontmatter, i, baseIndent, parsed.key, context)
     value[parsed.key] = child.value
-    i = child.startIndex + child.consumed
-    consumed = i - startIndex
+    i = child.nextIndex
   }
-  return { value, startIndex, consumed }
+  return { value, startIndex, consumed: i - startIndex }
+}
+
+/**
+ * Report whether a mapping line is a blank line or a comment, which carry no
+ * mapping entry wherever YAML permits them.
+ */
+function isMappingIgnorableLine(line: string): boolean {
+  return line.trim() === "" || line.trimStart().startsWith("#")
+}
+
+/**
+ * Parse the nested mapping of one key whose line has no inline value, and
+ * return it with the index where the parent mapping resumes.
+ */
+function parseChildMapping(
+  frontmatter: string[],
+  startIndex: number,
+  parentIndent: number,
+  key: string,
+  context: string,
+): { value: ParsedMapping; nextIndex: number } {
+  const childStart = firstNonEmptyLine(frontmatter, startIndex)
+  if (childStart === -1) {
+    throw inspectionError("INSPECTION_SOURCE_MALFORMED", `${context}: "${key}" has no value`)
+  }
+  const childIndent = countIndent(frontmatter[childStart])
+  if (childIndent <= parentIndent) {
+    throw inspectionError("INSPECTION_SOURCE_MALFORMED", `${context}: "${key}" has no value`)
+  }
+  const child = parseIndentedMapping(frontmatter, childStart, childIndent, context)
+  return { value: child.value, nextIndex: child.startIndex + child.consumed }
 }
 
 /**
@@ -344,12 +364,12 @@ function decodeSingleQuoted(body: string, context: string, original: string): st
  * Decode one action scalar and reject any value outside allow|ask|deny with
  * the permission name in the error context.
  */
-function parseActionValue(text: string, context: string, permission: string): string {
+function parseActionValue(text: string, context: string, permission: string): PermissionAction {
   const action = unquote(text.trim(), context)
-  if (!VALID_ACTIONS.has(action)) {
+  if (!isPermissionAction(action)) {
     throw inspectionError(
       "INSPECTION_SOURCE_MALFORMED",
-      `${context}: permission "${permission}" has invalid action ${JSON.stringify(text.trim())}; expected one of allow|ask|deny`,
+      `${context}: permission "${permission}" has invalid action ${JSON.stringify(text.trim())}; expected one of ${PERMISSION_ACTIONS.join("|")}`,
     )
   }
   return action

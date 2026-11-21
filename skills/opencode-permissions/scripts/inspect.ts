@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url"
 import { isAbsolute, join } from "node:path"
 import { createOpenCodeRuntime } from "./lib/opencode-runtime"
 import { createAgentListReport, createEffectivePolicyReport } from "./lib/inspection"
+import { toAbsolutePath } from "./lib/absolute-path"
+import type { AbsolutePath } from "./lib/absolute-path"
 import type { AgentListReport, EffectivePolicyReport, EffectiveRule, InspectArgs } from "./lib/types"
 
 const USAGE = `usage: inspect.sh list-agents [--json]
@@ -16,6 +18,16 @@ inspect.ts is internal to the inspect.sh wrapper.`
 // Private variable the wrapper fills with the discovered Git worktree top
 // level. inspect.ts never derives the repository from its own location.
 const WRAPPER_REPOSITORY_ROOT_VAR = "OPENCODE_PERMISSIONS_REPOSITORY_ROOT"
+
+// Run as a command only when this file is the executed entry. The runtime
+// resolves import.meta.url against the module realpath, so argv[1] is compared
+// through realpathSync too; otherwise a logical path such as /var (→
+// /private/var on macOS) or a symlinked skill installation would silently skip
+// main.
+const isMain =
+  process.argv[1] !== undefined &&
+  existsSync(process.argv[1]) &&
+  fileURLToPath(import.meta.url) === realpathSync(process.argv[1])
 
 /**
  * Validate the command line. Only the two read-only command shapes are
@@ -61,7 +73,7 @@ export function renderListAgents(report: AgentListReport): string {
  * is attributable - followed by the known overridden declaration files in
  * application order when any exist.
  */
-export function renderEffective(report: EffectivePolicyReport): string {
+export function renderEffectivePolicy(report: EffectivePolicyReport): string {
   const lines: string[] = []
   for (const agent of report.agents) {
     const status = agent.status === null ? "" : `, ${agent.status}`
@@ -98,9 +110,11 @@ function usageError(message: string): Error & { code: "USAGE" } {
  * The wrapper guarantees an absolute Git worktree top level; anything else is
  * rejected with a concise error carrying code `REPOSITORY_ROOT_MISSING`,
  * `REPOSITORY_ROOT_RELATIVE`, `REPOSITORY_ROOT_NOT_DIRECTORY`, or
- * `REPOSITORY_ROOT_NOT_WORKTREE` respectively.
+ * `REPOSITORY_ROOT_NOT_WORKTREE` respectively. Returns the validated root as
+ * an `AbsolutePath` so every downstream path is built from a proven absolute
+ * boundary value.
  */
-export function resolveWrapperRepositoryRoot(env: Record<string, string | undefined>): string {
+export function resolveWrapperRepositoryRoot(env: Record<string, string | undefined>): AbsolutePath {
   const value = env[WRAPPER_REPOSITORY_ROOT_VAR]
   if (value === undefined || value === "") {
     throw repositoryRootError(
@@ -132,7 +146,7 @@ export function resolveWrapperRepositoryRoot(env: Record<string, string | undefi
       `${WRAPPER_REPOSITORY_ROOT_VAR} is not a Git worktree: "${value}"`,
     )
   }
-  return value
+  return toAbsolutePath(value, WRAPPER_REPOSITORY_ROOT_VAR)
 }
 
 /**
@@ -168,7 +182,7 @@ function renderListOutput(report: AgentListReport, json: boolean): string {
  * Render the effective policy report as JSON or human-readable text.
  */
 function renderEffectiveOutput(report: EffectivePolicyReport, json: boolean): string {
-  return json ? JSON.stringify(report, null, 2) : renderEffective(report)
+  return json ? JSON.stringify(report, null, 2) : renderEffectivePolicy(report)
 }
 
 /**
@@ -179,15 +193,6 @@ function errorMessage(cause: unknown): string {
   return String(cause)
 }
 
-// Run as a command only when this file is the executed entry. The runtime
-// resolves import.meta.url against the module realpath, so argv[1] is compared
-// through realpathSync too; otherwise a logical path such as /var (→
-// /private/var on macOS) or a symlinked skill installation would silently skip
-// main.
-const isMain =
-  process.argv[1] !== undefined &&
-  existsSync(process.argv[1]) &&
-  fileURLToPath(import.meta.url) === realpathSync(process.argv[1])
 if (isMain) {
   main(process.argv.slice(2)).catch((err: unknown) => {
     process.stderr.write(`error: ${errorMessage(err)}\n`)

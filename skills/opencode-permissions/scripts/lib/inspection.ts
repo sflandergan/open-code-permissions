@@ -1,17 +1,14 @@
-import {
-  convertPermissionDeclarations,
-  mergeAgentDeclarations,
-  mergeSharedDeclarations,
-  nativeStatus,
-} from "./declarations"
-import { buildRuleRecords } from "./rule-attribution"
+import { mergeAgentPermissions, mergeSharedPermissions } from "./effective-permissions"
+import { buildEffectiveRules } from "./effective-rules"
 import { loadRepositoryConfigs, safeAgentName } from "./repository-configs"
 import { inspectionError } from "./errors"
+import type { AbsolutePath } from "./absolute-path"
 import type {
   AgentListEntry,
   AgentListReport,
+  AgentStatus,
   EffectiveAgent,
-  EffectiveDeclaration,
+  EffectivePermission,
   EffectivePolicyReport,
   OpenCodeRuntime,
   RepositoryConfig,
@@ -24,10 +21,10 @@ interface BuildEffectiveAgentDeps {
   name: string
   resolvedAgentConfig: ResolvedAgentConfig
   listed: AgentListEntry | undefined
-  repositoryRoot: string
+  repositoryRoot: AbsolutePath
   repositoryConfigs: RepositoryConfig[]
   resolvedConfig: ResolvedConfig
-  sharedDeclarations: EffectiveDeclaration[]
+  sharedPermissions: EffectivePermission[]
 }
 
 /**
@@ -39,11 +36,13 @@ interface BuildEffectiveAgentDeps {
  * never invents agents from repository files. Agent names are validated as
  * safe filename segments before any repository file lookup.
  *
+ * The repository root is an `AbsolutePath` converted at the wrapper boundary.
+ *
  * Rejects when the runtime is unavailable or returns malformed output or when
  * an agent name is not a safe filename segment.
  */
 export async function createAgentListReport(deps: {
-  repositoryRoot: string
+  repositoryRoot: AbsolutePath
   runtime: OpenCodeRuntime
 }): Promise<AgentListReport> {
   const inventory = await deps.runtime.listAgents(deps.repositoryRoot)
@@ -65,16 +64,17 @@ export async function createAgentListReport(deps: {
  * Build the complete ordered permission report for one enabled agent or for
  * every enabled agent.
  *
- * Repository declarations are merged source-aware per layer before the
+ * Repository permissions are merged source-aware per layer before the
  * resolved rules are attributed. For each layer - repository-shared and
  * agent - same-key declarations are merged in application order, so the later
  * surviving declaration becomes the single effective origin and earlier
  * declarations become known overrides. A resolved rule position is attributed
- * to the surviving declaration of a scope only when its exact tuple also
- * survives in the runtime's merged layer of that scope; every remaining
- * position is external with a null source. One declaration never becomes the
- * origin of two positions, and every rule record carries fresh origin and
- * overrides objects so callers cannot mutate shared state.
+ * to the surviving effective permission of a scope only when its exact tuple
+ * also survives in the runtime's merged layer of that scope; every remaining
+ * position is external with a null source. One effective permission never
+ * becomes the origin of two positions, and every rule record carries fresh
+ * origin and overrides objects so callers cannot mutate shared state. The
+ * repository root is an `AbsolutePath` converted at the wrapper boundary.
  *
  * Rejects when the runtime is unavailable or returns malformed output, when a
  * repository source is unsupported, unreadable, or malformed, when an agent
@@ -82,7 +82,7 @@ export async function createAgentListReport(deps: {
  * the runtime inventory.
  */
 export async function createEffectivePolicyReport(deps: {
-  repositoryRoot: string
+  repositoryRoot: AbsolutePath
   runtime: OpenCodeRuntime
   agentName?: string | null
 }): Promise<EffectivePolicyReport> {
@@ -93,7 +93,7 @@ export async function createEffectivePolicyReport(deps: {
   const requested = resolveRequestedAgents(inventory, deps.agentName ?? null)
 
   const repositoryConfigs = loadRepositoryConfigs(deps.repositoryRoot)
-  const sharedDeclarations = mergeSharedDeclarations(repositoryConfigs)
+  const sharedPermissions = mergeSharedPermissions(repositoryConfigs)
 
   const agents: EffectiveAgent[] = []
   for (const name of requested) {
@@ -106,7 +106,7 @@ export async function createEffectivePolicyReport(deps: {
         repositoryRoot: deps.repositoryRoot,
         repositoryConfigs,
         resolvedConfig,
-        sharedDeclarations,
+        sharedPermissions,
       }),
     )
   }
@@ -133,20 +133,29 @@ function resolveRequestedAgents(inventory: AgentListEntry[], agentName: string |
 
 /**
  * Assemble one agent's complete ordered rule records, attributing every
- * resolved position to the surviving repository declarations of both layers.
+ * resolved position to the surviving effective permissions of both layers.
  */
 function buildEffectiveAgent(deps: BuildEffectiveAgentDeps): EffectiveAgent {
-  const agentDeclarations = mergeAgentDeclarations(deps.repositoryConfigs, deps.name, deps.repositoryRoot)
+  const agentPermissions = mergeAgentPermissions(deps.repositoryConfigs, deps.name, deps.repositoryRoot)
   return {
     name: deps.resolvedAgentConfig.name,
     mode: deps.listed === undefined ? deps.resolvedAgentConfig.mode : deps.listed.mode,
     status: nativeStatus(deps.resolvedAgentConfig.native),
-    rules: buildRuleRecords(
+    rules: buildEffectiveRules(
       deps.resolvedAgentConfig.permission,
-      deps.sharedDeclarations,
-      agentDeclarations,
+      deps.sharedPermissions,
+      agentPermissions,
       deps.resolvedConfig,
       deps.name,
     ),
   }
+}
+
+/**
+ * Map the runtime's optional native flag to the report status; an absent flag
+ * is reported as null rather than guessed.
+ */
+function nativeStatus(native: boolean | undefined): AgentStatus {
+  if (native === undefined) return null
+  return native ? "native" : "custom"
 }

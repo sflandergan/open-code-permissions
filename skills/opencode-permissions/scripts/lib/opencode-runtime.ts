@@ -3,10 +3,15 @@ import { env as processEnv } from "node:process"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ChildProcess } from "node:child_process"
+import { toAbsolutePath } from "./absolute-path"
+import { isPermissionAction, PERMISSION_ACTIONS } from "./types"
 import type { AgentListEntry, OpenCodeRuntime, PermissionRule, ResolvedAgentConfig, ResolvedConfig } from "./types"
 
 // Default timeout for every OpenCode CLI invocation.
 const DEFAULT_TIMEOUT_MS = 15_000
+
+// The installation message reported when the runtime executable cannot be found.
+const OPENCODE_UNAVAILABLE_MESSAGE = "opencode is not installed or not on PATH; install OpenCode and retry"
 
 // Minimal platform variables copied from the inherited environment. Variables
 // outside this set are stripped so user or project configuration (for example
@@ -30,17 +35,16 @@ const MINIMAL_PLATFORM_VARS = new Set([
   "LC_TIME",
 ])
 
-const VALID_ACTIONS = new Set(["allow", "ask", "deny"])
 const VALID_MODES = new Set(["primary", "subagent", "all"])
 
 // `opencode agent list` prints one block per enabled agent: a header line with
 // the agent name and mode, followed by the indented JSON permission array.
-// The tested v1.18.10 runtime normally terminates the whole output with a
-// newline after the final closing bracket. Some large responses omit only that
-// newline, which is still complete when the final closing bracket is present.
+// The runtime normally terminates the whole output with a newline after the
+// final closing bracket. Some large responses omit only that newline, which is
+// still complete when the final closing bracket is present.
 const AGENT_BLOCK_HEADER = /^(?<name>[^\s()]+)\s+\((?<mode>[a-z]+)\)\s*$/
-// The v1.18.10 runtime indents the array opening `[` by two spaces but prints
-// the closing `]` at column zero.
+// The runtime indents the array opening `[` by two spaces but prints the
+// closing `]` at column zero.
 const ARRAY_OPEN_LINE = /^  \[$/
 const ARRAY_CLOSE_LINE = /^\]$/
 
@@ -85,7 +89,9 @@ type RunCommand = (operation: string, args: string[], cwd: string) => Promise<st
  *
  * `listAgents` runs the command a second time only when the first output is
  * classified as truncated; the final truncation error then reports both
- * attempts. Every other failure surfaces after a single call.
+ * attempts. Every other failure surfaces after a single call. A missing
+ * `opencode` executable raises `OPENCODE_UNAVAILABLE` with an installation
+ * message.
  */
 export function createOpenCodeRuntime({
   execFile,
@@ -93,24 +99,9 @@ export function createOpenCodeRuntime({
   env,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: OpenCodeRuntimeDeps): OpenCodeRuntime {
+  validateTimeout(timeoutMs)
   const sanitizedEnv = sanitizeEnvironment(env === undefined ? processEnv : env)
-  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    throw new Error(`createOpenCodeRuntime: timeoutMs must be a positive finite number, got ${timeoutMs}`)
-  }
-  const spawnRunner = spawn
-
-  async function runCommand(operation: string, args: string[], cwd: string): Promise<string> {
-    let stdout: string
-    try {
-      stdout =
-        spawnRunner === undefined
-          ? await runExecFile(execFile, args, cwd, sanitizedEnv, timeoutMs)
-          : await runSpawnWithFileOutput(spawnRunner, args, cwd, sanitizedEnv, timeoutMs)
-    } catch (cause) {
-      throw executionError(operation, args, cause)
-    }
-    return stdout
-  }
+  const runCommand = createCommandRunner(execFile, spawn, sanitizedEnv, timeoutMs)
 
   return {
     async listAgents(cwd: string): Promise<AgentListEntry[]> {
@@ -130,6 +121,36 @@ export function createOpenCodeRuntime({
 }
 
 /**
+ * Reject a non-positive or non-finite timeout before any command can run.
+ */
+function validateTimeout(timeoutMs: number): void {
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error(`createOpenCodeRuntime: timeoutMs must be a positive finite number, got ${timeoutMs}`)
+  }
+}
+
+/**
+ * Build the command runner that wraps the injected child-process transport,
+ * adding operation context to every failure.
+ */
+function createCommandRunner(
+  execFile: ExecFileRunner,
+  spawn: SpawnRunner | undefined,
+  env: Record<string, string>,
+  timeoutMs: number,
+): RunCommand {
+  return async (operation, args, cwd) => {
+    try {
+      return spawn === undefined
+        ? await runExecFile(execFile, args, cwd, env, timeoutMs)
+        : await runSpawnWithFileOutput(spawn, args, cwd, env, timeoutMs)
+    } catch (cause) {
+      throw executionError(operation, args, cause)
+    }
+  }
+}
+
+/**
  * Run a command with stdout connected to a regular file. OpenCode truncates
  * large responses when stdout is a pipe, while file redirection preserves the
  * complete output. The temporary directory is removed after the child exits,
@@ -145,7 +166,7 @@ async function runSpawnWithFileOutput(
   const tempRoot = join(tmpdir(), "opencode-permissions")
   await mkdir(tempRoot, { recursive: true })
   const tempDirectory = await mkdtemp(join(tempRoot, "opencode-permissions-"))
-  const outputPath = join(tempDirectory, "stdout")
+  const outputPath = toAbsolutePath(join(tempDirectory, "stdout"), "stdout capture path")
   const outputFile = await open(outputPath, "w")
 
   try {
@@ -183,26 +204,38 @@ function waitForSpawn(
       reject(cause)
       return
     }
+    watchChild(child, args, resolve, reject)
+  })
+}
 
-    let stderr = ""
-    if (child.stderr !== undefined && child.stderr !== null) {
-      if (typeof child.stderr.setEncoding === "function") child.stderr.setEncoding("utf8")
-      child.stderr.on("data", (chunk: string | Buffer) => {
-        stderr += String(chunk)
-      })
+/**
+ * Resolve or reject the spawn promise when the child exits, attaching the
+ * collected stderr to every failure.
+ */
+function watchChild(
+  child: ChildProcess,
+  args: string[],
+  resolve: () => void,
+  reject: (reason?: unknown) => void,
+): void {
+  let stderr = ""
+  if (child.stderr !== undefined && child.stderr !== null) {
+    if (typeof child.stderr.setEncoding === "function") child.stderr.setEncoding("utf8")
+    child.stderr.on("data", (chunk: string | Buffer) => {
+      stderr += String(chunk)
+    })
+  }
+  child.once("error", (cause: Error & { stderr?: string }) => {
+    if (cause && typeof cause === "object") cause.stderr = stderr
+    reject(cause)
+  })
+  child.once("close", (code: number | null, signal: string | null) => {
+    if (code === 0) {
+      resolve()
+      return
     }
-    child.once("error", (cause: Error & { stderr?: string }) => {
-      if (cause && typeof cause === "object") cause.stderr = stderr
-      reject(cause)
-    })
-    child.once("close", (code: number | null, signal: string | null) => {
-      if (code === 0) {
-        resolve()
-        return
-      }
-      const detail = signal === null ? `exit code ${code}` : `signal ${signal}`
-      reject(Object.assign(new Error(`opencode ${args.join(" ")} failed: ${detail}`), { code, stderr }))
-    })
+    const detail = signal === null ? `exit code ${code}` : `signal ${signal}`
+    reject(Object.assign(new Error(`opencode ${args.join(" ")} failed: ${detail}`), { code, stderr }))
   })
 }
 
@@ -277,18 +310,20 @@ function runExecFile(
 }
 
 /**
- * Translate an execFile failure into a contextual runtime error. A numeric
- * exit code carries stderr; ENOENT means the OpenCode executable is absent.
+ * Translate a command failure into a runtime error. A missing executable is
+ * reported with the installation message and code `OPENCODE_UNAVAILABLE`; any
+ * other failure carries the operation, the exact command, and stderr when a
+ * numeric exit code provides it.
  */
 function executionError(operation: string, args: string[], cause: unknown): Error & { code: string } {
-  const command = `opencode ${args.join(" ")}`
   const rawCode = errorCode(cause)
-  const code = rawCode === "ENOENT" ? "OPENCODE_UNAVAILABLE" : "OPENCODE_EXECUTION_FAILED"
+  if (rawCode === "ENOENT") return runtimeError("OPENCODE_UNAVAILABLE", OPENCODE_UNAVAILABLE_MESSAGE)
+  const command = `opencode ${args.join(" ")}`
   const detail =
     typeof rawCode === "number"
       ? String(stderrOf(cause) ?? messageOf(cause) ?? "")
       : String(messageOf(cause) ?? cause)
-  return runtimeError(code, `${operation} failed (${command}): ${detail}`)
+  return runtimeError("OPENCODE_EXECUTION_FAILED", `${operation} failed (${command}): ${detail}`)
 }
 
 /**
@@ -397,8 +432,8 @@ function parseAgentBlockBody(chunk: AgentBlock, operation: string): string[] {
 /**
  * Parse and validate the indented JSON rule array of one agent-list block.
  *
- * Captured v1.18.10 output separates rules with `},` and closes the array
- * with a column-zero `]` and no trailing comma. As a compatibility guard for
+ * Captured output separates rules with `},` and closes the array with a
+ * column-zero `]` and no trailing comma. As a compatibility guard for
  * runtimes that do print a trailing comma before the closing bracket, a comma
  * at end of line directly before `]` is dropped; JSON strings cannot contain
  * raw newlines, so the comma can never be inside a string.
@@ -568,10 +603,10 @@ function validateRule(rule: unknown, index: number, agentName: string, operation
       `${operation}: rule ${index} for agent "${agentName}" is missing a string "pattern" field`,
     )
   }
-  if (typeof record.action !== "string" || !VALID_ACTIONS.has(record.action)) {
+  if (!isPermissionAction(record.action)) {
     throw runtimeError(
       "OPENCODE_INVALID_ACTION",
-      `${operation}: rule ${index} for agent "${agentName}" has invalid action "${String(record.action)}"; expected one of allow|ask|deny`,
+      `${operation}: rule ${index} for agent "${agentName}" has invalid action "${String(record.action)}"; expected one of ${PERMISSION_ACTIONS.join("|")}`,
     )
   }
   return { permission: record.permission, pattern: record.pattern, action: record.action }

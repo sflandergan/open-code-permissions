@@ -10,6 +10,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { fileURLToPath } from "node:url"
@@ -388,6 +389,31 @@ test("exits non-zero with a clear message when bun is not on the path", async ()
     const result = await runWrapper(sandbox, ["list-agents"], sandbox.worktree, env)
     expect(result.code).not.toEqual(0)
     expect(result.stderr).toMatch(/bun/)
+  } finally {
+    sandbox.cleanup()
+  }
+})
+
+test("stops before writing output when opencode is not on PATH", async () => {
+  const sandbox = await createSandbox("global")
+  try {
+    const bunOnlyBin = join(sandbox.base, "bun-only-bin")
+    mkdirSync(bunOnlyBin, { recursive: true })
+    symlinkSync(BUN_EXECUTABLE, join(bunOnlyBin, "bun"))
+    const systemEntries = (process.env.PATH ?? "")
+      .split(":")
+      .filter((entry) => !existsSync(join(entry, "opencode")))
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PATH: [bunOnlyBin, ...systemEntries].join(":"),
+      HOME: sandbox.base,
+      OPENCODE_PERMISSIONS_REPOSITORY_ROOT: join(sandbox.base, "wrong-root"),
+    }
+
+    const result = await runWrapper(sandbox, ["list-agents"], sandbox.worktree, env)
+    expect(result.code).toEqual(1)
+    expect(result.stderr).toContain("opencode is not installed or not on PATH; install OpenCode and retry")
+    expect(existsSync(join(sandbox.worktree, ".temp"))).toBe(false)
   } finally {
     sandbox.cleanup()
   }

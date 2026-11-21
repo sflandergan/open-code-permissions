@@ -1,5 +1,21 @@
 /** Shared report and policy types for the inspector. */
 
+import type { AbsolutePath } from "./absolute-path"
+
+/** Permission actions OpenCode accepts, in the order error messages list them. */
+export const PERMISSION_ACTIONS = ["allow", "ask", "deny"] as const
+
+/** One action OpenCode accepts for a permission rule. */
+export type PermissionAction = (typeof PERMISSION_ACTIONS)[number]
+
+/**
+ * Reports whether `value` is one of the runtime's permission actions without
+ * assuming its type.
+ */
+export function isPermissionAction(value: unknown): value is PermissionAction {
+  return typeof value === "string" && PERMISSION_ACTIONS.some((action) => action === value)
+}
+
 /** Native/custom classification the runtime exposes for an agent, null when absent. */
 export type AgentStatus = "native" | "custom" | null
 
@@ -87,7 +103,10 @@ export interface InspectArgs {
 
 /** One existing repository configuration file with its parsed value. */
 export interface RepositoryConfig {
-  path: string
+  /** Repository-relative path printed as a rule origin, for example `opencode.json`. */
+  relativePath: string
+  /** Absolute path of the file that was read. */
+  absolutePath: AbsolutePath
   value: Record<string, unknown>
 }
 
@@ -98,8 +117,12 @@ export interface DeclarationTuple {
   action: string
 }
 
-/** One merged declaration with its surviving origin and earlier overrides. */
-export interface EffectiveDeclaration extends DeclarationTuple {
+/**
+ * One effective permission: a repository declaration tuple that survived
+ * config-layer merging, with its surviving origin and the earlier declaration
+ * sources it overrode in application order.
+ */
+export interface EffectivePermission extends DeclarationTuple {
   origin: { scope: "shared" | "agent"; source: string }
   overrides: RuleOverride[]
 }

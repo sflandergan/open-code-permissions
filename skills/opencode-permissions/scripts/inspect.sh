@@ -38,6 +38,11 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v opencode >/dev/null 2>&1; then
+  printf 'opencode is not installed or not on PATH; install OpenCode and retry\n' >&2
+  exit 1
+fi
+
 worktree_root="$(git -C "${PWD}" rev-parse --show-toplevel 2>/dev/null)" || {
   printf 'error: inspect.sh requires a Git worktree at "%s"\n' "${PWD}" >&2
   exit 1

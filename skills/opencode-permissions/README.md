@@ -74,7 +74,7 @@ Because OpenCode merges away source provenance, a rule from home, managed, or gl
 
 ## Tested Baseline
 
-The documented behavior was verified against OpenCode v1.18.10 source and tests. The reviewed upstream files are `packages/opencode/src/tool/shell.ts`, `packages/opencode/test/tool/shell.test.ts`, `packages/opencode/src/permission/index.ts`, and `packages/opencode/src/agent/agent.ts`.
+Verified against OpenCode 1.18.10 source and tests. The reviewed upstream files are `packages/opencode/src/tool/shell.ts`, `packages/opencode/test/tool/shell.test.ts`, `packages/opencode/src/permission/index.ts`, and `packages/opencode/src/agent/agent.ts`.
 
 The source of truth for permission-pattern matching is OpenCode's `Wildcard.match` implementation.
 For OpenCode v1.18.11, it is pinned to [`packages/core/src/util/wildcard.ts` at commit `012c2f57f976489d88bd4598a056b4bdcdd428ee`](https://github.com/anomalyco/opencode/blob/012c2f57f976489d88bd4598a056b4bdcdd428ee/packages/core/src/util/wildcard.ts#L3-L13).

@@ -12,9 +12,11 @@ import {
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { createAgentListReport, createEffectivePolicyReport } from "../lib/inspection"
-import { parseFrontmatterPermission } from "../lib/frontmatter"
+import { parseFrontmatterPermission } from "../lib/agent-frontmatter"
 import { parseJsonc } from "../lib/jsonc"
-import { parseArgs, renderListAgents, renderEffective, resolveWrapperRepositoryRoot } from "../inspect"
+import { toAbsolutePath } from "../lib/absolute-path"
+import type { AbsolutePath } from "../lib/absolute-path"
+import { parseArgs, renderListAgents, renderEffectivePolicy, resolveWrapperRepositoryRoot } from "../inspect"
 import type {
   AgentListEntry,
   AgentListReport,
@@ -152,8 +154,8 @@ function createFakeRuntime({ configOverride, omitNative = [] }: FakeRuntimeOptio
 /**
  * Create a temporary repository with the fixture policy sources in place.
  */
-function createFixtureRepository(): { root: string; cleanup: () => void } {
-  const root = mkdtempSync(join(TEMP_DIR, "opencode-permissions-inspection-"))
+function createFixtureRepository(): { root: AbsolutePath; cleanup: () => void } {
+  const root = toAbsolutePath(mkdtempSync(join(TEMP_DIR, "opencode-permissions-inspection-")), "fixture repository root")
   mkdirSync(join(root, ".opencode", "agents"), { recursive: true })
   writeFileSync(join(root, "opencode.json"), OPENCODE_JSON_FIXTURE)
   writeFileSync(join(root, ".opencode", "agents", "ghost.md"), AGENT_MD_FIXTURE)
@@ -907,7 +909,7 @@ function expectEffectiveRendering(output: string): void {
 
 test("the effective policy renders as human-readable and JSON output", () => {
   const effectiveReport = buildRenderReport()
-  expectEffectiveRendering(renderEffective(effectiveReport))
+  expectEffectiveRendering(renderEffectivePolicy(effectiveReport))
   expect(JSON.parse(JSON.stringify(effectiveReport, null, 2))).toEqual(effectiveReport)
 })
 
