@@ -23,7 +23,7 @@ const cachedMigrationSql = new Map<string, string>()
  */
 export function readSchemaSql(): string {
   if (cachedSql === null) {
-    cachedSql = readFileSync(resolve(import.meta.dirname, "schema.sql"), "utf-8")
+    cachedSql = readFileSync(resolve(import.meta.dirname, "..", "schema.sql"), "utf-8")
   }
   return cachedSql
 }
@@ -60,7 +60,7 @@ export function readMigrationPath(fromVersion: number): Array<{ to: number; sql:
 function readMigrationFile(file: string): string {
   const cached = cachedMigrationSql.get(file)
   if (cached !== undefined) return cached
-  const sql = readFileSync(resolve(import.meta.dirname, "migrations", file), "utf-8")
+  const sql = readFileSync(resolve(import.meta.dirname, "..", "migrations", file), "utf-8")
   cachedMigrationSql.set(file, sql)
   return sql
 }

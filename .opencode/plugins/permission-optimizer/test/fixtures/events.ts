@@ -1,4 +1,4 @@
-import type { Clock } from "../../model"
+import type { Clock } from "../../src/model"
 
 /** Deterministic clock fixed at one receipt time. */
 export const fixedClock: Clock = { now: () => new Date("2026-08-05T10:00:00.000Z") }

@@ -1,11 +1,11 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
-import { openDatabase } from "../database"
-import { createObservationStore, type ObservationStore } from "../store"
-import type { ObservationRecord, CompletionEvent } from "../model"
+import { openDatabase } from "../src/database"
+import { createObservationStore, type ObservationStore } from "../src/store"
+import type { ObservationRecord, CompletionEvent } from "../src/model"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { toAbsolutePath, type AbsolutePath } from "../absolute-path"
+import { toAbsolutePath, type AbsolutePath } from "../src/absolute-path"
 
 const VALID_UTC = "2026-08-05T10:00:00.000Z"
 const VALID_UTC_2 = "2026-08-05T11:00:00.000Z"
@@ -40,7 +40,7 @@ function makeFakeClock(): { clock: { now(): Date }; set(iso: string): void } {
 
 /** Writes a child-process script that repeatedly delivers one observation. */
 function writeConcurrentWriterScript(directory: string, askedAt: string): string {
-  const pluginDirectory = join(import.meta.dir, "..")
+  const pluginDirectory = join(import.meta.dir, "..", "src")
   const scriptPath = join(directory, "concurrent-writer.ts")
   writeFileSync(
     scriptPath,

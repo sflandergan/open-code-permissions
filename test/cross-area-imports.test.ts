@@ -15,18 +15,18 @@ function sourceFile(path: string, importSpecifiers: string[]): SourceFile {
 describe("cross-area imports", () => {
   it("rejects a plugin module that imports a published skill", () => {
     const files = [
-      sourceFile(".opencode/plugins/permission-optimizer/store.ts", [
-        "../../../skills/opencode-permissions/scripts/lib/jsonc",
+      sourceFile(".opencode/plugins/permission-optimizer/src/store.ts", [
+        "../../../../skills/opencode-permissions/scripts/lib/jsonc",
       ]),
     ]
     expect(findCrossAreaImports(files)).toEqual([
-      ".opencode/plugins/permission-optimizer/store.ts imports ../../../skills/opencode-permissions/scripts/lib/jsonc from opencode-permissions-skill",
+      ".opencode/plugins/permission-optimizer/src/store.ts imports ../../../../skills/opencode-permissions/scripts/lib/jsonc from opencode-permissions-skill",
     ])
   })
 
   it("accepts a plugin module that imports another plugin module", () => {
     const files = [
-      sourceFile(".opencode/plugins/permission-optimizer/store.ts", ["./database", "./schema"]),
+      sourceFile(".opencode/plugins/permission-optimizer/src/store.ts", ["./database", "./schema"]),
     ]
     expect(findCrossAreaImports(files)).toEqual([])
   })

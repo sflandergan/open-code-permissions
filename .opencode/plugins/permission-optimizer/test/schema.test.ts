@@ -1,6 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Database } from "bun:sqlite"
-import { readSchemaSql, SCHEMA_VERSION } from "../schema"
+import { readSchemaSql, SCHEMA_VERSION } from "../src/schema"
 
 function openTestDb(): Database {
   const db = new Database(":memory:", { create: true })

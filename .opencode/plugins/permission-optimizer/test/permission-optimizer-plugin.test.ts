@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { PluginInput } from "@opencode-ai/plugin"
 import * as entry from "../../permission-optimizer"
-import { resolveDatabasePath } from "../database-path"
+import { resolveDatabasePath } from "../src/database-path"
 import { permissionV2AskedEvent } from "./fixtures/events"
 
 interface PluginHooks {

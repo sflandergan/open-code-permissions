@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { toAbsolutePath } from "../absolute-path"
+import { toAbsolutePath } from "../src/absolute-path"
 
 describe("toAbsolutePath", () => {
   test("accepts an absolute path unchanged", () => {

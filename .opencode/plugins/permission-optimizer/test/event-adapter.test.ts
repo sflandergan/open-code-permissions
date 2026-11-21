@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { adaptCompletion, adaptEvent } from "../event-adapter"
+import { adaptCompletion, adaptEvent } from "../src/event-adapter"
 import {
   askedEvent,
   askedEventWithDataPayload,

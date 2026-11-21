@@ -3,9 +3,9 @@ import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { toAbsolutePath } from "../absolute-path"
-import { openDatabase } from "../database"
-import { SCHEMA_VERSION } from "../schema"
+import { toAbsolutePath } from "../src/absolute-path"
+import { openDatabase } from "../src/database"
+import { SCHEMA_VERSION } from "../src/schema"
 
 function fileHash(path: string): string | null {
   if (!existsSync(path)) return null

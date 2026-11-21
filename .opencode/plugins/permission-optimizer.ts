@@ -1,13 +1,13 @@
 import type { Plugin, PluginInput, Hooks } from "@opencode-ai/plugin"
-import type { Clock } from "./permission-optimizer/model"
-import type { PermissionEventCorrelator } from "./permission-optimizer/permission-event-correlator"
-import type { ObservationStore } from "./permission-optimizer/store"
-import { adaptEvent, adaptCompletion } from "./permission-optimizer/event-adapter"
-import { createObservationStore } from "./permission-optimizer/store"
-import { createPermissionEventCorrelator } from "./permission-optimizer/permission-event-correlator"
-import { createAgentResolver } from "./permission-optimizer/runtime-context"
-import { resolveDatabasePath } from "./permission-optimizer/database-path"
-import { toAbsolutePath } from "./permission-optimizer/absolute-path"
+import type { Clock } from "./permission-optimizer/src/model"
+import type { PermissionEventCorrelator } from "./permission-optimizer/src/permission-event-correlator"
+import type { ObservationStore } from "./permission-optimizer/src/store"
+import { adaptEvent, adaptCompletion } from "./permission-optimizer/src/event-adapter"
+import { createObservationStore } from "./permission-optimizer/src/store"
+import { createPermissionEventCorrelator } from "./permission-optimizer/src/permission-event-correlator"
+import { createAgentResolver } from "./permission-optimizer/src/runtime-context"
+import { resolveDatabasePath } from "./permission-optimizer/src/database-path"
+import { toAbsolutePath } from "./permission-optimizer/src/absolute-path"
 
 /**
  * Project-local permission optimizer plugin. Subscribes to `permission.asked`,

@@ -3,8 +3,8 @@ import { Database } from "bun:sqlite"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createObservationStore } from "../.opencode/plugins/permission-optimizer/store"
-import { toAbsolutePath } from "../.opencode/plugins/permission-optimizer/absolute-path"
+import { createObservationStore } from "../.opencode/plugins/permission-optimizer/src/store"
+import { toAbsolutePath } from "../.opencode/plugins/permission-optimizer/src/absolute-path"
 import {
   openObservationDatabase,
   readPermissionDecisionHistory,

@@ -3,10 +3,10 @@ import { execFileSync } from "node:child_process"
 import { mkdtempSync, rmSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { tmpdir } from "node:os"
-import { toAbsolutePath } from "../absolute-path"
-import { resolveDatabasePath } from "../database-path"
-import { formatRepositoryIdentity } from "../repository-identity"
-import { createAgentResolver, resolveRepositoryIdentityFromGit } from "../runtime-context"
+import { toAbsolutePath } from "../src/absolute-path"
+import { resolveDatabasePath } from "../src/database-path"
+import { formatRepositoryIdentity } from "../src/repository-identity"
+import { createAgentResolver, resolveRepositoryIdentityFromGit } from "../src/runtime-context"
 
 describe("resolveDatabasePath", () => {
   const originalEnv = process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH

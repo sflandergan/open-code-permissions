@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { toAbsolutePath } from "../absolute-path"
+import { toAbsolutePath } from "../src/absolute-path"
 import {
   formatRepositoryIdentity,
   normalizeOrigin,
   resolveRepositoryIdentity,
-} from "../repository-identity"
+} from "../src/repository-identity"
 
 describe("normalizeOrigin", () => {
   test("reduces an SSH origin to host and path", () => {
