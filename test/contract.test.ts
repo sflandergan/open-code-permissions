@@ -9,8 +9,8 @@ import {
   openObservationDatabase,
   readPermissionDecisionHistory,
   type PermissionDecisionHistory,
-} from "../skills/opencode-permission-optimizer/scripts/lib/read-observations"
-import { buildAgentPermissionReport } from "../skills/opencode-permission-optimizer/scripts/agent-permission-report"
+} from "../skills/opencode-permission-optimizer/src/lib/read-observations"
+import { buildAgentPermissionReport } from "../skills/opencode-permission-optimizer/src/agent-permission-report"
 
 const IDENTITY = "github.com/example/portfolio-app"
 const WORKTREE = "/worktrees/portfolio-app"

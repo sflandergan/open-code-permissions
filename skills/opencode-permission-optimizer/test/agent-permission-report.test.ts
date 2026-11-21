@@ -17,15 +17,15 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
-import { RETENTION_DAYS, SCHEMA_VERSION } from "../lib/read-observations"
-import { toAbsolutePath } from "../lib/absolute-path"
-import { buildAgentPermissionReport, parseArgs } from "../agent-permission-report"
+import { RETENTION_DAYS, SCHEMA_VERSION } from "../src/lib/read-observations"
+import { toAbsolutePath } from "../src/lib/absolute-path"
+import { buildAgentPermissionReport, parseArgs } from "../src/agent-permission-report"
 import { createObservationDatabase, insertObservation } from "./helpers/observation-database"
 
 const IDENTITY = "github.com/user/repo"
 const NOW = new Date("2026-09-12T10:00:00.000Z")
-const reportShPath = join(import.meta.dirname, "..", "agent-permission-report.sh")
-const reportTsPath = join(import.meta.dirname, "..", "agent-permission-report.ts")
+const reportShPath = join(import.meta.dirname, "..", "scripts", "agent-permission-report.sh")
+const reportTsPath = join(import.meta.dirname, "..", "src", "agent-permission-report.ts")
 
 type InspectorRequest = { form: "list-agents" } | { form: "show-effective"; agent: string }
 
@@ -80,11 +80,19 @@ interface SkillCopy {
 
 function copySkillScripts(): SkillCopy {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "permission-optimizer-skill-")))
-  const scriptsDirectory = join(root, "skills", "opencode-permission-optimizer", "scripts")
+  const skillRoot = join(root, "skills", "opencode-permission-optimizer")
+  const scriptsDirectory = join(skillRoot, "scripts")
+  const sourceDirectory = join(skillRoot, "src")
   mkdirSync(scriptsDirectory, { recursive: true })
-  for (const scriptName of ["agent-permission-report.sh", "agent-permission-report.ts", "list-agents.sh"]) {
-    cpSync(join(import.meta.dirname, "..", scriptName), join(scriptsDirectory, scriptName))
+  mkdirSync(sourceDirectory, { recursive: true })
+  const installedSkillRoot = join(import.meta.dirname, "..")
+  for (const scriptName of ["agent-permission-report.sh", "list-agents.sh"]) {
+    cpSync(join(installedSkillRoot, "scripts", scriptName), join(scriptsDirectory, scriptName))
   }
+  cpSync(
+    join(installedSkillRoot, "src", "agent-permission-report.ts"),
+    join(sourceDirectory, "agent-permission-report.ts"),
+  )
   return {
     root,
     scriptsDirectory,

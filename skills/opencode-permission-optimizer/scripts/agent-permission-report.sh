@@ -27,7 +27,7 @@ worktree_root="$(git -C "${PWD}" rev-parse --show-toplevel 2>/dev/null)" || {
 # Help goes to the terminal, not into an allocated output file.
 for arg in "$@"; do
   if [ "${arg}" = "--help" ] || [ "${arg}" = "-h" ]; then
-    exec bun "${script_dir}/agent-permission-report.ts" "$@"
+    exec bun "${script_dir}/../src/agent-permission-report.ts" "$@"
   fi
 done
 
@@ -44,7 +44,7 @@ trap 'rm -f -- "${output_file}"; exit 143' TERM
 trap 'rm -f -- "${output_file}"; exit 129' HUP
 trap 'if [ "${completed}" -ne 1 ]; then rm -f -- "${output_file}"; fi' EXIT
 
-if bun "${script_dir}/agent-permission-report.ts" "$@" >"${output_file}"; then
+if bun "${script_dir}/../src/agent-permission-report.ts" "$@" >"${output_file}"; then
   :
 else
   status=$?

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { toAbsolutePath } from "../lib/absolute-path"
-import { formatRepositoryIdentity, resolveRepositoryIdentity } from "../lib/repository-identity"
+import { toAbsolutePath } from "../src/lib/absolute-path"
+import { formatRepositoryIdentity, resolveRepositoryIdentity } from "../src/lib/repository-identity"
 
 describe("formatRepositoryIdentity", () => {
   test("stores the normalized origin as the repository identity", () => {

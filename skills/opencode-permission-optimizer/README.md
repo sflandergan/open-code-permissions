@@ -6,10 +6,37 @@ The skill scripts are TypeScript run by Bun. Install Bun and ensure `bun` is on 
 
 ## Package layout
 
+```text
+skills/opencode-permission-optimizer/
+├── SKILL.md
+├── references/
+│   ├── native-roles.md
+│   └── opencode-permission-model.md
+├── scripts/
+│   ├── agent-permission-report.sh
+│   └── list-agents.sh
+├── src/
+│   ├── agent-permission-report.ts
+│   └── lib/
+│       ├── absolute-path.ts
+│       ├── error-detail.ts
+│       ├── read-observations.ts
+│       └── repository-identity.ts
+└── test/
+    ├── fixtures/
+    ├── helpers/
+    ├── absolute-path.test.ts
+    ├── agent-permission-report.test.ts
+    ├── read-observations.test.ts
+    └── repository-identity.test.ts
+```
+
 - `SKILL.md` — the executable advisory workflow.
 - `references/opencode-permission-model.md` — generic OpenCode permission semantics.
 - `references/native-roles.md` — role guidance for permission-relevant native agents.
-- `scripts/` — the agent permission report script and its tests.
+- `scripts/` — the two command wrappers.
+- `src/` — the agent permission report script and its supporting modules.
+- `test/` — the focused tests, fixtures, and helpers.
 
 The package runs from its own files and the sibling `opencode-permissions` inspector; it does not require any repository document.
 Install it under `.agents/skills/opencode-permission-optimizer/` or a global skills directory; the wrappers resolve their own location.
@@ -69,7 +96,7 @@ Policy rules constrain tool requests; they do not sandbox the host user's filesy
 ## Testing
 
 ```bash
-bun test ./scripts/test/*.test.ts
+bun test ./test/*.test.ts
 ```
 
 The observation plugin and its suite live in the repository under `.opencode/plugins/permission-optimizer/`.

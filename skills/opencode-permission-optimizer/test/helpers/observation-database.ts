@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite"
 import { join } from "node:path"
-import { SCHEMA_VERSION } from "../../lib/read-observations"
+import { SCHEMA_VERSION } from "../../src/lib/read-observations"
 
 const DATABASE_FILENAME = "observations.sqlite"
 const REPOSITORY_IDENTITY = "github.com/user/repo"
