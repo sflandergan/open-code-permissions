@@ -1,56 +1,17 @@
 # OpenCode Permission Model
 
-Generic OpenCode permission semantics the optimizer relies on.
-Policy values differ per repository; read the selected agent's rules from the exported effective policy rather than assuming them.
-
-## Actions and evaluation
-
-- Each rule resolves to `allow` (run without approval), `ask` (prompt), or `deny` (block).
-- Rules match the complete permission input and are evaluated in order; the last matching rule wins.
-- A common configuration puts the catch-all `"*"` first and more specific rules after it.
-- When no rule matches, the request resolves to `ask`.
-
-## Pattern wildcards
-
-- `*` matches zero or more of any character.
-- `?` matches exactly one character.
-- Every other character matches literally.
-- `~` or `$HOME` at the start of a pattern expands to the home directory; expansion changes how a pattern is written, not which workspace a path belongs to.
-- For a command pattern ending in ` *`, OpenCode also matches the bare command with no arguments where its special command matching applies, so `git status *` covers `git status` and `git status <args>` while `git status` alone does not cover arguments.
-
-## Permission kinds
-
-`read`, `edit`, `glob`, `grep`, `bash`, `task`, `skill`, `lsp`, `question`, `webfetch`, `websearch`, `external_directory`, and `doom_loop`.
-`edit` covers `edit`, `write`, and `patch`.
-`doom_loop` triggers when the same tool call repeats three times with identical input.
-A runtime- or plugin-added tool files under its own name.
+OpenCode semantics the optimizer needs only for targets outside the project and for `external_directory` requests.
+Rule evaluation and wildcard basics are in `SKILL.md` step 6; policy values come from the report's effective policy.
 
 ## external_directory
 
 - Gates tool calls that touch paths outside the working directory where OpenCode started, for any tool taking a path (`read`, `edit`, `glob`, `grep`, and many `bash` commands).
 - Its input is an absolute directory glob; a directory target selects itself and a file-like target selects its immediate parent.
 - A directory allowed here inherits the workspace defaults, so reads are allowed under it unless a rule overrides them.
-- Home expansion does not place an external path in the workspace; it still needs an `external_directory` rule.
+- `~` or `$HOME` at the start of a pattern expands to the home directory. Expansion changes how a pattern is written, not which workspace a path belongs to: a home path still needs an `external_directory` rule.
 
-## Configuration precedence
+## Bash and external paths
 
-- `opencode.json` loads before `opencode.jsonc`, so a later declaration for the same permission and pattern replaces the earlier value.
-- Agent permissions merge over shared permissions with agent rules taking precedence.
-- Recognized file commands in `bash` get a limited external-path scan, but that scan does not sandbox `bash`.
-- `bash` redirects are skipped by the external-directory scan and remain governed by the complete `bash` command.
-- OpenCode evaluates parsed command nodes independently, including nodes inside substitutions, pipelines, and compound statements.
-
-## Policy sources
-
-- Repository-shared permissions: the `permission` section of `opencode.json` and `opencode.jsonc`.
-- Root-config agent permissions: `agent.<name>.permission` in `opencode.json` / `opencode.jsonc`.
-- Agent-file permissions: the `permission:` frontmatter of `.opencode/agents/<name>.md`.
-- Role guidance for a custom agent: `.opencode/agents/<name>.md`, every skill it references with its `SKILL.md`, every file each `SKILL.md` references, and every applicable `AGENTS.md` (repository root and nested).
-
-## Bash authority limit
-
-> Bash permissions authorize command text. They do not confine filesystem, process, or network authority to the repository.
-
-An allowed Bash command runs with the host user's filesystem, process, and network authority.
-Textual Bash patterns do not confine host authority to the worktree or to any configured `external_directory` target.
-When confinement matters, use a path-checked built-in tool, an applicable runtime control, a real sandbox, or a trusted wrapper.
+- Recognized file commands in `bash` get a limited external-path scan; that scan does not sandbox `bash`.
+- `bash` redirects are skipped by the external-directory scan and remain governed by the complete `bash` command, so a redirect target outside the project is never checked by an `external_directory` rule.
+- Textual Bash patterns do not confine host authority to the worktree or to any `external_directory` target. When confinement matters, use a path-checked built-in tool, a runtime control, a real sandbox, or a trusted wrapper.

@@ -87,7 +87,7 @@ The skills CLI discovers skills in `skills/`, `.agents/skills/` and `.claude/ski
 - `opencode-permissions`: `inspect.ts` with `lib/` modules for JSONC parsing, the `opencode` runtime adapter and inspection. The 809-line `inspection.mjs` is decomposed to meet the 40-line function rule while porting; behavior is preserved and guarded by the ported tests.
 - `opencode-permission-optimizer`: `agent-permission-report.ts`, `list-agents.sh`, `lib/` for observation reading and repository identity, plus the existing `references/`.
 - Report output stays repository-local: each command writes complete JSON to an ignored `.temp/` file and prints only `output file: .temp/<name>`; the caller reads it and deletes that exact file. This needs no `external_directory` grant in consumer repositories. This repository gains `.temp/` in `.gitignore`.
-- Examples and fixtures replace `pnpm`, `/tmp/bikes-local` and `bikes-local` identities with neutral values. The generic policy-source guidance lives in the optimizer skill's `references/opencode-permission-model.md`; no repository guide exists.
+- Examples and fixtures replace `pnpm`, `/tmp/bikes-local` and `bikes-local` identities with neutral values. Custom-agent role-guidance sources are listed in the optimizer `SKILL.md`; editable policy sources are documented by `opencode-permissions`; no repository guide exists.
 
 ### Plugin
 
@@ -97,7 +97,7 @@ Behavior is unchanged: it records `permission.asked`, `permission.replied` and `
 
 - The agent keeps its self-protection (it cannot edit its own definition) and its confirmed-edit model. Its permission rules are tidied: duplicates and a reference to a script that does not exist are removed, and paths use `.temp/`.
 - The agent is a copy-in file. Having the plugin register it through a `config` hook was rejected because it would hide a policy-editing agent's permissions from the consumer's own review.
-- The optimizer skill's `references/opencode-permission-model.md` holds the generic policy-source and role-guidance content. The sister's copied "current policy values" and native-role override sections are dropped; the inspector reports effective policy and copies would go stale. No repository-level guide exists.
+- The optimizer `SKILL.md` lists the custom-agent role-guidance sources; editable policy sources and their precedence are documented once, in `opencode-permissions`. The sister's copied "current policy values" and native-role override sections are dropped; the inspector reports effective policy and copies would go stale. No repository-level guide exists.
 
 ## Data flow
 

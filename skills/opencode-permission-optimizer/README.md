@@ -32,7 +32,7 @@ skills/opencode-permission-optimizer/
 ```
 
 - `SKILL.md` — the executable advisory workflow.
-- `references/opencode-permission-model.md` — generic OpenCode permission semantics.
+- `references/opencode-permission-model.md` — `external_directory` and Bash path semantics, loaded only for targets outside the project.
 - `references/native-roles.md` — role guidance for permission-relevant native agents.
 - `scripts/` — the two command wrappers.
 - `src/` — the agent permission report script and its supporting modules.
