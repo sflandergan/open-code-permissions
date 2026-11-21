@@ -6,12 +6,17 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 import {
   openObservationDatabase,
-  readExactInputEvidence,
+  readPermissionDecisionHistory,
   resolveDatabasePath,
   RETENTION_DAYS,
 } from "./lib/read-observations"
-import type { ObservationDatabaseResult } from "./lib/read-observations"
-import { resolveRepositoryIdentityForWorktree, resolveWorktreeRoot } from "./lib/repository-identity"
+import type { ObservationDatabaseState } from "./lib/read-observations"
+import { toAbsolutePath } from "./lib/absolute-path"
+import {
+  formatRepositoryIdentity,
+  resolveRepositoryIdentityForWorktree,
+  resolveWorktreeRoot,
+} from "./lib/repository-identity"
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const USAGE = `usage: summarize.ts --agent <agent> [--days <n>]`
@@ -63,13 +68,13 @@ interface InspectorAgent {
 }
 
 interface DatabaseSummaryContext extends SummaryBase {
-  opened: ObservationDatabaseResult
+  opened: ObservationDatabaseState
   agent: string
   invokeInspector: InspectorInvoker
 }
 
 interface AvailableDatabaseContext extends SummaryBase {
-  opened: Extract<ObservationDatabaseResult, { state: "available" }>
+  opened: Extract<ObservationDatabaseState, { state: "available" }>
   agent: string
   invokeInspector: InspectorInvoker
 }
@@ -127,14 +132,19 @@ export function runSummary(input: SummaryInput): Record<string, unknown> {
     invokeInspector = defaultInvokeInspector,
   } = input
   const summaryBase = buildSummaryBase({ agent, cwd, now, days })
-  const opened = openObservationDatabase(databasePath ?? resolveDatabasePath(env))
+  const opened = openObservationDatabase(
+    databasePath === undefined ? resolveDatabasePath(env) : toAbsolutePath(databasePath, "database path"),
+  )
   return buildDatabaseSummary({ opened, agent, invokeInspector, ...summaryBase })
 }
 
 function buildSummaryBase({ agent, cwd, now, days }: SummaryBaseInput): SummaryBase {
-  const worktreeRoot = resolveWorktreeRoot(cwd)
+  const worktreeRoot = resolveWorktreeRoot(toAbsolutePath(cwd, "cwd"))
   const resolvedRepository = resolveRepositoryIdentityForWorktree(worktreeRoot)
-  const repository = { identity: resolvedRepository.identity, worktree: resolvedRepository.worktree }
+  const repository = {
+    identity: formatRepositoryIdentity(resolvedRepository.identity),
+    worktree: resolvedRepository.worktreeRoot,
+  }
   const generatedAt = now.toISOString()
   const windowDays = Math.min(days ?? RETENTION_DAYS, RETENTION_DAYS)
   const retainedInterval = {
@@ -178,7 +188,7 @@ function buildAvailableDatabaseSummary({
   opened, base, repository, retainedInterval, agent, invokeInspector,
 }: AvailableDatabaseContext): Record<string, unknown> {
   try {
-    const evidence = readExactInputEvidence(opened.db, {
+    const decisionHistory = readPermissionDecisionHistory(opened.db, {
       repositoryIdentity: repository.identity,
       agent,
       fromUtc: retainedInterval.from,
@@ -199,9 +209,9 @@ function buildAvailableDatabaseSummary({
       databaseState: "available",
       schemaVersion: opened.schemaVersion,
       agent: { name: matched.name, mode: matched.mode, status: matched.status ?? null },
-      counts: evidence.counts,
+      counts: decisionHistory.counts,
       effectivePolicy: { rules: policyEntry.rules },
-      inputs: evidence.inputs,
+      inputs: decisionHistory.inputs,
     }
   } finally {
     opened.db.close()
@@ -237,7 +247,7 @@ function defaultInvokeInspector(args: InspectorRequest): unknown {
     dirname(fileURLToPath(import.meta.url)),
     "..", "..", "opencode-permissions", "scripts", "inspect.sh",
   )
-  const worktreeRoot = resolveWorktreeRoot(process.cwd())
+  const worktreeRoot = resolveWorktreeRoot(toAbsolutePath(process.cwd(), "cwd"))
   const outputPath = allocateInspectorOutputPath(worktreeRoot)
   try {
     const cliArgs = args.form === "list-agents"

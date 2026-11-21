@@ -4,8 +4,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
-import { RETENTION_DAYS } from "../lib/read-observations"
+import { RETENTION_DAYS, SCHEMA_VERSION } from "../lib/read-observations"
 import { parseArgs, runSummary } from "../summarize"
+import { createObservationDatabase, insertObservation } from "./helpers/observation-database"
 
 const IDENTITY = "github.com/user/repo"
 const NOW = new Date("2026-09-12T10:00:00.000Z")
@@ -13,19 +14,6 @@ const summarizeShPath = join(import.meta.dirname, "..", "summarize.sh")
 const summarizeTsPath = join(import.meta.dirname, "..", "summarize.ts")
 
 type InspectorRequest = { form: "list-agents" } | { form: "show-effective"; agent: string }
-
-interface InsertObservationOptions {
-  requestId: string
-  sessionId: string
-  permission: string
-  input: string
-  worktree: string
-  askedAt: string
-  decision?: string
-  decidedAt?: string
-  execution?: string
-  completedAt?: string
-}
 
 function assertHelpText(stdout: string): void {
   expect(stdout).toMatch(/^usage: summarize\.ts --agent <agent> \[--days <n>\]\n/)
@@ -60,48 +48,12 @@ test("prints the help text from the wrapper without creating an output file", ()
   }
 })
 
-function createCurrentSchemaDatabase(dbPath: string): Database {
-  const db = new Database(dbPath)
-  db.exec(`CREATE TABLE schema_metadata (id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL) STRICT`)
-  db.exec(`CREATE TABLE observations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL,
-    message_id TEXT, call_id TEXT, repository_identity TEXT, worktree TEXT NOT NULL, agent TEXT,
-    permission TEXT NOT NULL, asked_at TEXT NOT NULL,
-    decision TEXT CHECK (decision IN ('once','always','reject','always-derived','rejection-derived','unresolved')),
-    decided_at TEXT, tool TEXT, execution TEXT CHECK (execution IN ('success','failure','incomplete')),
-    exit_code INTEGER, completed_at TEXT,
-    qualifying_approval INTEGER NOT NULL GENERATED ALWAYS AS (
-      CASE WHEN decision IN ('once','always') AND execution = 'success'
-        AND repository_identity IS NOT NULL AND agent IS NOT NULL THEN 1 ELSE 0 END) STORED) STRICT`)
-  db.exec(`CREATE TABLE requested_patterns (
-    observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
-    pattern_index INTEGER NOT NULL CHECK (pattern_index >= 0),
-    pattern TEXT NOT NULL CHECK (length(pattern) > 0),
-    PRIMARY KEY (observation_id, pattern_index)) STRICT`)
-  db.query("INSERT INTO schema_metadata (id, version) VALUES (1, 4)").run()
-  return db
-}
-
-function insertObservation(db: Database, opts: InsertObservationOptions): void {
-  const result = db.query(
-    `INSERT INTO observations
-      (request_id, session_id, repository_identity, worktree, agent, permission,
-       asked_at, decision, decided_at, execution, completed_at)
-     VALUES (?, ?, ?, ?, 'implement', ?, ?, ?, ?, ?, ?)`,
-  ).run(opts.requestId, opts.sessionId, IDENTITY, opts.worktree, opts.permission,
-    opts.askedAt, opts.decision ?? "once", opts.decidedAt ?? null,
-    opts.execution ?? "success", opts.completedAt ?? null)
-  db.query("INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, 0, ?)")
-    .run(Number(result.lastInsertRowid), opts.input)
-}
-
-function createTestContext(): { cwd: string; dbPath: string; cleanup: () => void } {
+function createTestContext(): { cwd: string; cleanup: () => void } {
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), "permission-summary-exporter-")))
   execFileSync("git", ["init", "-q", cwd])
   execFileSync("git", ["-C", cwd, "remote", "add", "origin", "git@github.com:user/repo.git"])
   return {
     cwd,
-    dbPath: join(cwd, "observations.sqlite"),
     cleanup: () => rmSync(cwd, { recursive: true, force: true }),
   }
 }
@@ -231,12 +183,11 @@ test("caps the retention window at the maximum retention period", () => {
   }
 })
 
-test("exports repository, agent, counts, policy, and evidence for an available database", () => {
-  const { cwd, dbPath, cleanup } = createTestContext()
+test("exports repository, agent, counts, policy, and requested patterns for an available database", () => {
+  const { cwd, cleanup } = createTestContext()
   try {
-    const db = createCurrentSchemaDatabase(dbPath)
-    insertObservation(db, { requestId: "r1", sessionId: "s1", permission: "bash", input: "git status", worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
-    db.close()
+    const dbPath = createObservationDatabase(cwd)
+    insertObservation(dbPath, { requestId: "r1", sessionId: "s1", permission: "bash", patterns: ["git status"], worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
     const invocations: InspectorRequest[] = []
     const summary = runSummary({
       agent: "implement", cwd, now: NOW, databasePath: dbPath,
@@ -244,7 +195,7 @@ test("exports repository, agent, counts, policy, and evidence for an available d
     })
     expect(summary.summaryVersion).toEqual(1)
     expect(summary.databaseState).toEqual("available")
-    expect(summary.schemaVersion).toEqual(4)
+    expect(summary.schemaVersion).toEqual(SCHEMA_VERSION)
     expect(summary.repository).toEqual({ identity: IDENTITY, worktree: cwd })
     expect(summary.agent).toEqual({ name: "implement", mode: "all", status: "custom" })
     expect(summary.counts).toEqual({ observations: 1, approvals: 1, rejections: 0, unresolved: 0, distinctSessions: 1 })
@@ -278,7 +229,7 @@ test("exports repository, agent, counts, policy, and evidence for an available d
   }
 })
 
-test("reports an absent database as an empty summary with no policy or evidence", () => {
+test("reports an absent database as an empty summary with no policy or requested patterns", () => {
   const { cwd, cleanup } = createTestContext()
   try {
     const summary = runSummary({
@@ -296,11 +247,10 @@ test("reports an absent database as an empty summary with no policy or evidence"
 })
 
 test("fails the export when policy inspection fails", () => {
-  const { cwd, dbPath, cleanup } = createTestContext()
+  const { cwd, cleanup } = createTestContext()
   try {
-    const db = createCurrentSchemaDatabase(dbPath)
-    insertObservation(db, { requestId: "r1", sessionId: "s1", permission: "bash", input: "git status", worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
-    db.close()
+    const dbPath = createObservationDatabase(cwd)
+    insertObservation(dbPath, { requestId: "r1", sessionId: "s1", permission: "bash", patterns: ["git status"], worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
     expect(() => runSummary({
       agent: "implement", cwd, now: NOW, databasePath: dbPath,
       invokeInspector: () => { throw new Error("inspector failed") },
@@ -311,11 +261,10 @@ test("fails the export when policy inspection fails", () => {
 })
 
 test("fails the export when the agent is absent from the runtime inventory", () => {
-  const { cwd, dbPath, cleanup } = createTestContext()
+  const { cwd, cleanup } = createTestContext()
   try {
-    const db = createCurrentSchemaDatabase(dbPath)
-    insertObservation(db, { requestId: "r1", sessionId: "s1", permission: "bash", input: "git status", worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
-    db.close()
+    const dbPath = createObservationDatabase(cwd)
+    insertObservation(dbPath, { requestId: "r1", sessionId: "s1", permission: "bash", patterns: ["git status"], worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
     expect(() => runSummary({
       agent: "ghost", cwd, now: NOW, databasePath: dbPath,
       invokeInspector: () => ({ agents: [] }),
@@ -326,13 +275,16 @@ test("fails the export when the agent is absent from the runtime inventory", () 
 })
 
 test("fails the export naming the expected and found schema versions", () => {
-  const { cwd, dbPath, cleanup } = createTestContext()
+  const { cwd, cleanup } = createTestContext()
   try {
-    const db = createCurrentSchemaDatabase(dbPath)
-    db.query("UPDATE schema_metadata SET version = 2 WHERE id = 1").run()
-    db.close()
+    const dbPath = createObservationDatabase(cwd)
+    const writer = new Database(dbPath)
+    writer.query("UPDATE schema_metadata SET version = ? WHERE id = 1").run(SCHEMA_VERSION - 1)
+    writer.close()
     expect(() => runSummary({ agent: "implement", cwd, now: NOW, databasePath: dbPath,
-      invokeInspector: fakeInspector([]) })).toThrow(/incompatible schema.*expected 4.*found 2/i)
+      invokeInspector: fakeInspector([]) })).toThrow(
+      new RegExp(`incompatible schema.*expected ${SCHEMA_VERSION}.*found ${SCHEMA_VERSION - 1}`, "i"),
+    )
   } finally {
     cleanup()
   }

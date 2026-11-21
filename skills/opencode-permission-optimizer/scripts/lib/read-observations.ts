@@ -3,6 +3,8 @@ import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { platform as processPlatform } from "node:process"
+import { toAbsolutePath } from "./absolute-path"
+import type { AbsolutePath } from "./absolute-path"
 
 /**
  * Current schema version: requested patterns live in `requested_patterns`.
@@ -14,7 +16,6 @@ export const SCHEMA_VERSION = 4
 /** Observation retention window in days from the last lifecycle activity. */
 export const RETENTION_DAYS = 30
 
-const DAY_MS = 24 * 60 * 60 * 1000
 const DATABASE_FILENAME = "observations.sqlite"
 
 /**
@@ -22,16 +23,16 @@ const DATABASE_FILENAME = "observations.sqlite"
  * exists, `incompatible` with the expected and found schema versions when the
  * schema does not match, and `available` with the open connection otherwise.
  */
-export type ObservationDatabaseResult =
+export type ObservationDatabaseState =
   | { state: "missing" }
   | { state: "incompatible"; schemaVersion: number; foundSchemaVersion: number | null }
   | { state: "available"; db: Database; schemaVersion: number }
 
 /**
- * Evidence selection: a sanitized repository identity (`null` when unknown),
+ * Agent history query: a sanitized repository identity (`null` when unknown),
  * the target agent, and the closed UTC activity interval `[fromUtc, toUtc]`.
  */
-export interface EvidenceScope {
+export interface AgentHistoryQuery {
   repositoryIdentity: string | null
   agent: string
   fromUtc: string
@@ -39,12 +40,31 @@ export interface EvidenceScope {
 }
 
 /**
- * Complete retained per-exact-input aggregates for the scope. Observation,
- * approval, rejection, unresolved, and distinct-session counts are
- * deduplicated by observation, so one observation with several inputs
- * contributes once to each count.
+ * Everything counted for one requested pattern inside a permission decision
+ * history. Counts are deduplicated by observation, so one observation
+ * contributes once per count even when it carries several requested patterns.
  */
-export interface EvidenceReport {
+export interface PatternDecisionHistory {
+  permission: string
+  input: string
+  requests: number
+  approvals: number
+  rejections: number
+  unresolved: number
+  distinctSessions: number
+  firstActivityAt: string | null
+  lastActivityAt: string | null
+  worktrees: string[]
+}
+
+/**
+ * Complete retained permission decision history for an agent history query:
+ * observation, approval, rejection, unresolved, and distinct-session counts
+ * plus one entry per requested pattern. Counts are deduplicated by
+ * observation, so one observation with several requested patterns contributes
+ * once to each count.
+ */
+export interface PermissionDecisionHistory {
   counts: {
     observations: number
     approvals: number
@@ -52,25 +72,14 @@ export interface EvidenceReport {
     unresolved: number
     distinctSessions: number
   }
-  inputs: Array<{
-    permission: string
-    input: string
-    requests: number
-    approvals: number
-    rejections: number
-    unresolved: number
-    distinctSessions: number
-    firstActivityAt: string | null
-    lastActivityAt: string | null
-    worktrees: string[]
-  }>
+  inputs: PatternDecisionHistory[]
 }
 
-interface SchemaVersionRow {
+interface SchemaMetadataRecord {
   version: number
 }
 
-interface ObservationRow {
+interface ObservedPatternDecision {
   id: number
   request_id: string
   session_id: string
@@ -81,12 +90,12 @@ interface ObservationRow {
   completed_at: string | null
   decision: string | null
   qualifying_approval: number
-  exact_input: string
+  pattern: string
 }
 
-interface InputAggregate {
+interface PatternAggregate {
   permission: string
-  input: string
+  pattern: string
   requestIds: Set<string>
   approvalObservationIds: Set<number>
   rejectionObservationIds: Set<number>
@@ -97,8 +106,8 @@ interface InputAggregate {
   worktrees: Set<string>
 }
 
-interface EvidenceAggregate {
-  inputs: Map<string, InputAggregate>
+interface AgentHistoryAggregate {
+  patterns: Map<string, PatternAggregate>
   sessionIds: Set<string>
   observationIds: Set<number>
   approvalObservationIds: Set<number>
@@ -113,7 +122,7 @@ interface EvidenceAggregate {
  * to guard against accidental mutation on this connection; that is not
  * isolation from other processes running as the same OS user.
  */
-export function openObservationDatabase(dbPath: string): ObservationDatabaseResult {
+export function openObservationDatabase(dbPath: AbsolutePath): ObservationDatabaseState {
   if (!existsSync(dbPath)) {
     return { state: "missing" }
   }
@@ -132,14 +141,14 @@ export function openObservationDatabase(dbPath: string): ObservationDatabaseResu
   }
 }
 
-function isSchemaVersionRow(value: unknown): value is SchemaVersionRow {
+function isSchemaMetadataRecord(value: unknown): value is SchemaMetadataRecord {
   return typeof value === "object" && value !== null && typeof (value as { version?: unknown }).version === "number"
 }
 
 function readSchemaVersion(db: Database): number | null {
   try {
-    const row = db.query("SELECT version FROM schema_metadata WHERE id = 1").get()
-    return isSchemaVersionRow(row) ? row.version : null
+    const record = db.query("SELECT version FROM schema_metadata WHERE id = 1").get()
+    return isSchemaMetadataRecord(record) ? record.version : null
   } catch {
     return null
   }
@@ -148,16 +157,18 @@ function readSchemaVersion(db: Database): number | null {
 /**
  * Resolve the observation database path: the environment override when it is
  * set and non-empty, otherwise the platform-specific data directory for the
- * OpenCode permission optimizer.
+ * OpenCode permission optimizer. Throws when the resolved path is not
+ * absolute.
  */
 export function resolveDatabasePath(
   env: Record<string, string | undefined>,
   platform: string = processPlatform,
   homeDir: string = homedir(),
-): string {
+): AbsolutePath {
   const override = env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH
-  if (override !== undefined && override.length > 0) return override
-  return join(defaultBaseDirectory(env, platform, homeDir), "opencode", "permission-optimizer", DATABASE_FILENAME)
+  if (override !== undefined && override.length > 0) return toAbsolutePath(override, "database path")
+  const baseDirectory = defaultBaseDirectory(env, platform, homeDir)
+  return toAbsolutePath(join(baseDirectory, "opencode", "permission-optimizer", DATABASE_FILENAME), "database path")
 }
 
 function defaultBaseDirectory(
@@ -176,18 +187,20 @@ function defaultBaseDirectory(
 }
 
 /**
- * Read the complete retained per-exact-input aggregates for the repository
- * identity and target agent over the closed interval `[fromUtc, toUtc]`.
- * There is no grouping, no eligibility threshold, no stderr normalization, no
- * row limit, and no partial-success path; scope violations throw.
+ * Read the complete retained permission decision history for an agent history
+ * query. There is no grouping, no eligibility threshold, no stderr
+ * normalization, no row limit, and no partial-success path; query violations
+ * throw.
  */
-export function readExactInputEvidence(db: Database, scope: EvidenceScope): EvidenceReport {
-  assertScope(scope)
-  const rows = queryJoinedRows(db, scope)
-  return aggregateRows(rows)
+export function readPermissionDecisionHistory(
+  db: Database,
+  query: AgentHistoryQuery,
+): PermissionDecisionHistory {
+  assertAgentHistoryQuery(query)
+  return buildDecisionHistory(aggregateObservations(queryObservedPatternDecisions(db, query)))
 }
 
-function assertScope({ repositoryIdentity, agent, fromUtc, toUtc }: EvidenceScope): void {
+function assertAgentHistoryQuery({ repositoryIdentity, agent, fromUtc, toUtc }: AgentHistoryQuery): void {
   if (repositoryIdentity !== null && typeof repositoryIdentity !== "string") {
     throw new Error("repository identity must be a string or null")
   }
@@ -202,80 +215,75 @@ function assertScope({ repositoryIdentity, agent, fromUtc, toUtc }: EvidenceScop
   }
 }
 
-function queryJoinedRows(db: Database, { repositoryIdentity, agent, fromUtc, toUtc }: EvidenceScope): ObservationRow[] {
+function queryObservedPatternDecisions(db: Database, { repositoryIdentity, agent, fromUtc, toUtc }: AgentHistoryQuery): ObservedPatternDecision[] {
   const identityClause = repositoryIdentity === null ? "repository_identity IS NULL" : "repository_identity = ?"
   const params: string[] = repositoryIdentity === null ? [] : [repositoryIdentity]
   params.push(agent, fromUtc, toUtc)
   return db
     .query(
       `SELECT o.id, o.request_id, o.session_id, o.permission, o.worktree, o.asked_at,
-              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, oi.pattern AS exact_input
+              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, rp.pattern AS pattern
        FROM observations o
-       JOIN requested_patterns oi ON oi.observation_id = o.id
+       JOIN requested_patterns rp ON rp.observation_id = o.id
        WHERE o.${identityClause}
          AND o.agent = ?
          AND COALESCE(o.completed_at, o.decided_at, o.asked_at) >= ?
          AND COALESCE(o.completed_at, o.decided_at, o.asked_at) <= ?
        ORDER BY COALESCE(o.completed_at, o.decided_at, o.asked_at) ASC, o.id ASC`,
     )
-    .all(...params) as ObservationRow[]
+    .all(...params) as ObservedPatternDecision[]
 }
 
-function aggregateRows(rows: ObservationRow[]): EvidenceReport {
-  const aggregate = accumulateRows(rows)
-  return projectAggregate(aggregate)
-}
-
-function accumulateRows(rows: ObservationRow[]): EvidenceAggregate {
-  const aggregate: EvidenceAggregate = {
-    inputs: new Map(),
+function aggregateObservations(decisions: ObservedPatternDecision[]): AgentHistoryAggregate {
+  const aggregate: AgentHistoryAggregate = {
+    patterns: new Map(),
     sessionIds: new Set(),
     observationIds: new Set(),
     approvalObservationIds: new Set(),
     rejectionObservationIds: new Set(),
     unresolvedObservationIds: new Set(),
   }
-  for (const row of rows) {
-    accumulateRow(aggregate, row)
+  for (const decision of decisions) {
+    addObservationToAggregate(aggregate, decision)
   }
   return aggregate
 }
 
-function accumulateRow(aggregate: EvidenceAggregate, row: ObservationRow): void {
-  const activity = row.completed_at ?? row.decided_at ?? row.asked_at
-  aggregate.observationIds.add(row.id)
-  aggregate.sessionIds.add(row.session_id)
-  const key = JSON.stringify([row.permission, row.exact_input])
-  const entry = getOrCreateInputAggregate(aggregate.inputs, key, row)
-  entry.requestIds.add(row.request_id)
-  if (row.qualifying_approval === 1) {
-    entry.approvalObservationIds.add(row.id)
-    aggregate.approvalObservationIds.add(row.id)
+function addObservationToAggregate(aggregate: AgentHistoryAggregate, decision: ObservedPatternDecision): void {
+  const activity = decision.completed_at ?? decision.decided_at ?? decision.asked_at
+  aggregate.observationIds.add(decision.id)
+  aggregate.sessionIds.add(decision.session_id)
+  const key = JSON.stringify([decision.permission, decision.pattern])
+  const entry = findOrCreatePatternAggregate(aggregate.patterns, key, decision)
+  entry.requestIds.add(decision.request_id)
+  if (decision.qualifying_approval === 1) {
+    entry.approvalObservationIds.add(decision.id)
+    aggregate.approvalObservationIds.add(decision.id)
   }
-  if (row.decision === "reject") {
-    entry.rejectionObservationIds.add(row.id)
-    aggregate.rejectionObservationIds.add(row.id)
+  if (decision.decision === "reject") {
+    entry.rejectionObservationIds.add(decision.id)
+    aggregate.rejectionObservationIds.add(decision.id)
   }
-  if (row.decision === "unresolved") {
-    entry.unresolvedObservationIds.add(row.id)
-    aggregate.unresolvedObservationIds.add(row.id)
+  if (decision.decision === "unresolved") {
+    entry.unresolvedObservationIds.add(decision.id)
+    aggregate.unresolvedObservationIds.add(decision.id)
   }
-  entry.sessionIds.add(row.session_id)
-  entry.worktrees.add(row.worktree)
+  entry.sessionIds.add(decision.session_id)
+  entry.worktrees.add(decision.worktree)
   if (entry.firstActivityAt === null || activity < entry.firstActivityAt) entry.firstActivityAt = activity
   if (entry.lastActivityAt === null || activity > entry.lastActivityAt) entry.lastActivityAt = activity
 }
 
-function getOrCreateInputAggregate(
-  inputs: Map<string, InputAggregate>,
+function findOrCreatePatternAggregate(
+  patterns: Map<string, PatternAggregate>,
   key: string,
-  row: ObservationRow,
-): InputAggregate {
-  const existing = inputs.get(key)
+  decision: ObservedPatternDecision,
+): PatternAggregate {
+  const existing = patterns.get(key)
   if (existing !== undefined) return existing
-  const created: InputAggregate = {
-    permission: row.permission,
-    input: row.exact_input,
+  const created: PatternAggregate = {
+    permission: decision.permission,
+    pattern: decision.pattern,
     requestIds: new Set(),
     approvalObservationIds: new Set(),
     rejectionObservationIds: new Set(),
@@ -285,14 +293,14 @@ function getOrCreateInputAggregate(
     lastActivityAt: null,
     worktrees: new Set(),
   }
-  inputs.set(key, created)
+  patterns.set(key, created)
   return created
 }
 
-function projectAggregate(aggregate: EvidenceAggregate): EvidenceReport {
-  const sortedInputs = [...aggregate.inputs.values()]
-    .map((entry) => projectInputAggregate(entry))
-    .sort(compareInputAggregates)
+function buildDecisionHistory(aggregate: AgentHistoryAggregate): PermissionDecisionHistory {
+  const sortedPatterns = [...aggregate.patterns.values()]
+    .map((entry) => buildPatternDecisionHistory(entry))
+    .sort(comparePatternDecisionHistories)
 
   return {
     counts: {
@@ -302,14 +310,14 @@ function projectAggregate(aggregate: EvidenceAggregate): EvidenceReport {
       unresolved: aggregate.unresolvedObservationIds.size,
       distinctSessions: aggregate.sessionIds.size,
     },
-    inputs: sortedInputs,
+    inputs: sortedPatterns,
   }
 }
 
-function projectInputAggregate(entry: InputAggregate): EvidenceReport["inputs"][number] {
+function buildPatternDecisionHistory(entry: PatternAggregate): PatternDecisionHistory {
   return {
     permission: entry.permission,
-    input: entry.input,
+    input: entry.pattern,
     requests: entry.requestIds.size,
     approvals: entry.approvalObservationIds.size,
     rejections: entry.rejectionObservationIds.size,
@@ -321,6 +329,6 @@ function projectInputAggregate(entry: InputAggregate): EvidenceReport["inputs"][
   }
 }
 
-function compareInputAggregates(a: EvidenceReport["inputs"][number], b: EvidenceReport["inputs"][number]): number {
+function comparePatternDecisionHistories(a: PatternDecisionHistory, b: PatternDecisionHistory): number {
   return a.permission === b.permission ? (a.input < b.input ? -1 : 1) : a.permission < b.permission ? -1 : 1
 }

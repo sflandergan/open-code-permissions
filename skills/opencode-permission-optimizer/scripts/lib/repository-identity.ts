@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process"
+import { toAbsolutePath } from "./absolute-path"
+import type { AbsolutePath } from "./absolute-path"
 
 /**
  * Sanitized repository identity resolution. Git metadata is resolved through
@@ -11,25 +13,44 @@ import { execFileSync } from "node:child_process"
  * unparseable origin falls back to the Git common directory.
  */
 
-type RepositoryIdentitySource = "origin" | "common-directory" | null
+/**
+ * Repository identity: the sanitized `host/path` of the `origin` remote, the
+ * absolute Git common directory, or unknown. The raw remote URL never appears.
+ */
+export type RepositoryIdentity =
+  | { source: "origin"; remote: string }
+  | { source: "git-common-directory"; directoryPath: AbsolutePath }
+  | { source: "unknown" }
 
-type GitMetadata = {
-  origin: string | null
-  commonDirectory: string | null
-}
-
-type RepositoryIdentityResult = {
-  identity: string | null
-  identitySource: RepositoryIdentitySource
+/** Repository identity of a worktree together with that worktree's root. */
+export interface WorktreeRepositoryIdentity {
+  identity: RepositoryIdentity
+  worktreeRoot: AbsolutePath
 }
 
 /**
- * Resolve the Git worktree top level for `cwd`. Throws when `cwd` is not a Git
- * worktree, including the subprocess detail in the error message.
+ * The string stored in `observations.repository_identity`: the normalized
+ * origin `host/path`, else the absolute Git common directory, else `null`.
  */
-export function resolveWorktreeRoot(cwd: string): string {
+export function formatRepositoryIdentity(identity: RepositoryIdentity): string | null {
+  switch (identity.source) {
+    case "origin":
+      return identity.remote
+    case "git-common-directory":
+      return identity.directoryPath
+    case "unknown":
+      return null
+  }
+}
+
+/**
+ * Resolve the absolute Git worktree top level for `cwd`. Throws when `cwd` is
+ * not a Git worktree, including the subprocess detail in the error message.
+ */
+export function resolveWorktreeRoot(cwd: AbsolutePath): AbsolutePath {
+  let output: string
   try {
-    return readTrimmedOutput(
+    output = readTrimmedOutput(
       execFileSync("git", ["rev-parse", "--show-toplevel"], {
         cwd,
         encoding: "utf8",
@@ -39,6 +60,12 @@ export function resolveWorktreeRoot(cwd: string): string {
   } catch (err) {
     throw new Error(`not a Git worktree at ${cwd}: ${readFailureDetail(err)}`)
   }
+  return toAbsolutePath(output, "worktree root")
+}
+
+interface GitMetadata {
+  origin: string | null
+  commonDirectory: AbsolutePath | null
 }
 
 /**
@@ -46,23 +73,21 @@ export function resolveWorktreeRoot(cwd: string): string {
  * worktree. A missing origin is a silent null; the raw value never leaves this
  * module unsanitized.
  */
-export function resolveGitMetadata(worktreeRoot: string): GitMetadata {
+function resolveGitMetadata(worktreeRoot: AbsolutePath): GitMetadata {
+  const commonDirectory = gitOutputOrNull(["rev-parse", "--path-format=absolute", "--git-common-dir"], worktreeRoot)
   return {
     origin: gitOutputOrNull(["remote", "get-url", "origin"], worktreeRoot),
-    commonDirectory: gitOutputOrNull(["rev-parse", "--path-format=absolute", "--git-common-dir"], worktreeRoot),
+    commonDirectory: commonDirectory === null ? null : toAbsolutePath(commonDirectory, "Git common directory"),
   }
 }
 
 /**
- * Build the sanitized repository identity for one worktree. The identity is
- * derived from the origin when usable and from the Git common directory
- * otherwise; `identitySource` records which one supplied it.
+ * Resolve the sanitized repository identity for one worktree, together with
+ * that worktree's absolute root.
  */
-export function resolveRepositoryIdentityForWorktree(worktreeRoot: string): RepositoryIdentityResult & {
-  worktree: string
-} {
+export function resolveRepositoryIdentityForWorktree(worktreeRoot: AbsolutePath): WorktreeRepositoryIdentity {
   const { origin, commonDirectory } = resolveGitMetadata(worktreeRoot)
-  return { ...resolveRepositoryIdentity(origin, commonDirectory), worktree: worktreeRoot }
+  return { identity: resolveRepositoryIdentity(origin, commonDirectory), worktreeRoot }
 }
 
 /**
@@ -90,21 +115,21 @@ export function normalizeOrigin(raw: string | null): string | null {
 
 /**
  * Combine sanitized Git metadata into the identity contract. The origin wins
- * when usable; the Git common directory is the fallback, and both are `null`
- * when neither is available.
+ * when usable; the Git common directory is the fallback, and the identity is
+ * unknown when neither is available.
  */
 export function resolveRepositoryIdentity(
   origin: string | null,
-  commonDirectory: string | null,
-): RepositoryIdentityResult {
+  commonDirectory: AbsolutePath | null,
+): RepositoryIdentity {
   const sanitized = normalizeOrigin(origin)
   if (sanitized) {
-    return { identity: sanitized, identitySource: "origin" }
+    return { source: "origin", remote: sanitized }
   }
   if (commonDirectory !== null) {
-    return { identity: commonDirectory, identitySource: "common-directory" }
+    return { source: "git-common-directory", directoryPath: commonDirectory }
   }
-  return { identity: null, identitySource: null }
+  return { source: "unknown" }
 }
 
 function buildIdentity(host: string, path: string): string | null {
@@ -123,7 +148,7 @@ function readFailureDetail(err: unknown): string {
   return readTrimmedOutput(failure.stderr ?? failure.message)
 }
 
-function gitOutputOrNull(args: string[], cwd: string): string | null {
+function gitOutputOrNull(args: string[], cwd: AbsolutePath): string | null {
   try {
     const value = readTrimmedOutput(
       execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }),

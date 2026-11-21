@@ -7,7 +7,7 @@ import { createObservationStore } from "../.opencode/plugins/permission-optimize
 import { toAbsolutePath } from "../.opencode/plugins/permission-optimizer/absolute-path"
 import {
   openObservationDatabase,
-  readExactInputEvidence,
+  readPermissionDecisionHistory,
 } from "../skills/opencode-permission-optimizer/scripts/lib/read-observations"
 import { runSummary } from "../skills/opencode-permission-optimizer/scripts/summarize"
 
@@ -55,14 +55,14 @@ function seedApprovedObservation(dbPath: string): void {
 }
 
 describe("observation schema contract", () => {
-  it("reads the approved observation and its exact input from a database written by the plugin", () => {
-    const dbPath = join(tempDir, "observations.sqlite")
+  it("reads the approved observation and its requested pattern from a database written by the plugin", () => {
+    const dbPath = toAbsolutePath(join(tempDir, "observations.sqlite"), "database path")
     seedApprovedObservation(dbPath)
 
     const opened = openObservationDatabase(dbPath)
     expect(opened.state).toBe("available")
     if (opened.state !== "available") throw new Error("expected an available database")
-    const evidence = readExactInputEvidence(opened.db, {
+    const decisionHistory = readPermissionDecisionHistory(opened.db, {
       repositoryIdentity: IDENTITY,
       agent: "build",
       fromUtc: "2026-01-01T00:00:00.000Z",
@@ -70,14 +70,14 @@ describe("observation schema contract", () => {
     })
     opened.db.close()
 
-    expect(evidence.counts).toEqual({
+    expect(decisionHistory.counts).toEqual({
       observations: 1,
       approvals: 1,
       rejections: 0,
       unresolved: 0,
       distinctSessions: 1,
     })
-    expect(evidence.inputs).toEqual([
+    expect(decisionHistory.inputs).toEqual([
       {
         permission: "bash",
         input: "git status",
@@ -94,7 +94,7 @@ describe("observation schema contract", () => {
   })
 
   it("refuses a plugin-written database with a different schema version and names the expected and found versions", () => {
-    const dbPath = join(tempDir, "observations.sqlite")
+    const dbPath = toAbsolutePath(join(tempDir, "observations.sqlite"), "database path")
     seedApprovedObservation(dbPath)
     const writer = new Database(dbPath)
     writer.run("UPDATE schema_metadata SET version = ?", [999])
