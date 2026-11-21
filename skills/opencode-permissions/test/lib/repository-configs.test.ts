@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { createAgentListReport, createEffectivePolicyReport } from "../src/lib/inspection"
+import { createAgentListReport, createEffectivePolicyReport } from "../../src/lib/inspection"
 import {
   captureRejection,
   createFakeRuntime,
@@ -9,7 +9,7 @@ import {
   OPENCODE_JSONC_FIXTURE,
   rulesByPosition,
   TEMP_DIR,
-} from "./helpers/inspection-fixtures"
+} from "../helpers/inspection-fixtures"
 
 test("a symlinked agent source is rejected rather than followed", async () => {
   const repo = createFixtureRepository()

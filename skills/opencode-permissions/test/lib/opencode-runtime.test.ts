@@ -3,10 +3,10 @@ import { EventEmitter } from "node:events"
 import { readFileSync, writeSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
-import { createOpenCodeRuntime } from "../src/lib/opencode-runtime"
-import type { OpenCodeRuntimeDeps } from "../src/lib/opencode-runtime"
+import { createOpenCodeRuntime } from "../../src/lib/opencode-runtime"
+import type { OpenCodeRuntimeDeps } from "../../src/lib/opencode-runtime"
 
-const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures")
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures")
 
 // Captured `opencode agent list` output.
 const AGENT_LIST_FIXTURE = readFileSync(join(fixturesDir, "agent-list.txt"), "utf8")

@@ -25,10 +25,11 @@ skills/opencode-permission-optimizer/
 └── test/
     ├── fixtures/
     ├── helpers/
-    ├── absolute-path.test.ts
-    ├── agent-permission-report.test.ts
-    ├── read-observations.test.ts
-    └── repository-identity.test.ts
+    ├── lib/
+    │   ├── absolute-path.test.ts
+    │   ├── read-observations.test.ts
+    │   └── repository-identity.test.ts
+    └── agent-permission-report.test.ts
 ```
 
 - `SKILL.md` — the executable advisory workflow.
@@ -36,7 +37,7 @@ skills/opencode-permission-optimizer/
 - `references/native-roles.md` — role guidance for permission-relevant native agents.
 - `scripts/` — the two command wrappers.
 - `src/` — the agent permission report script and its supporting modules.
-- `test/` — the focused tests, fixtures, and helpers.
+- `test/` — the focused tests, fixtures, and helpers; tests mirror `src/` (`test/lib/` covers `src/lib/`).
 
 The package runs from its own files and the sibling `opencode-permissions` inspector; it does not require any repository document.
 Install it under `.agents/skills/opencode-permission-optimizer/` or a global skills directory; the wrappers resolve their own location.
@@ -96,7 +97,7 @@ Policy rules constrain tool requests; they do not sandbox the host user's filesy
 ## Testing
 
 ```bash
-bun test ./test/*.test.ts
+bun test ./test
 ```
 
 The observation plugin and its suite live in the repository under `.opencode/plugins/permission-optimizer/`.

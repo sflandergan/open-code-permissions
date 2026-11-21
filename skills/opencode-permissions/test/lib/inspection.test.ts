@@ -1,15 +1,15 @@
 import { expect, test } from "bun:test"
 import { writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { createAgentListReport, createEffectivePolicyReport } from "../src/lib/inspection"
-import type { EffectivePolicyReport, EffectiveRule } from "../src/lib/types"
+import { createAgentListReport, createEffectivePolicyReport } from "../../src/lib/inspection"
+import type { EffectivePolicyReport, EffectiveRule } from "../../src/lib/types"
 import {
   captureRejection,
   createFakeRuntime,
   createFixtureRepository,
   rulesByPosition,
-} from "./helpers/inspection-fixtures"
-import type { FixtureConfig } from "./helpers/inspection-fixtures"
+} from "../helpers/inspection-fixtures"
+import type { FixtureConfig } from "../helpers/inspection-fixtures"
 
 // A full agent frontmatter exercising blank lines and comments around the
 // permission block, single- and double-quoted keys, a single-quoted action,

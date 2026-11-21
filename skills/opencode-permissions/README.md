@@ -33,14 +33,15 @@ skills/opencode-permissions/
 └── test/
     ├── fixtures/
     ├── helpers/
-    ├── absolute-path.test.ts
-    ├── agent-frontmatter.test.ts
+    ├── lib/
+    │   ├── absolute-path.test.ts
+    │   ├── agent-frontmatter.test.ts
+    │   ├── inspection.test.ts
+    │   ├── jsonc.test.ts
+    │   ├── opencode-runtime.test.ts
+    │   └── repository-configs.test.ts
     ├── inspect.integration.test.ts
-    ├── inspect.test.ts
-    ├── inspection.test.ts
-    ├── jsonc.test.ts
-    ├── opencode-runtime.test.ts
-    └── repository-configs.test.ts
+    └── inspect.test.ts
 ```
 
 - `scripts/inspect.sh` is the only public command surface. It resolves its own installed directory, requires `bun` on PATH, exports `OPENCODE_PERMISSIONS_REPOSITORY_ROOT` with the discovered worktree top level, and delegates argument handling to `src/inspect.ts`. The output-file contract and the optimizer's internal `--output-file` option are in `SKILL.md`.
@@ -55,7 +56,7 @@ skills/opencode-permissions/
 - `src/lib/opencode-runtime.ts` adapts the installed `opencode` CLI (`agent list`, `debug config`, `debug agent <name>`) with a sanitized environment and a finite timeout, captures stdout through a temporary regular file so large CLI responses are not truncated by pipe output, never probes the installed version, and never constructs `debug agent --tool`, which executes a tool.
 - `src/lib/repository-configs.ts` reads the repository-root `opencode.json` and `opencode.jsonc` in OpenCode load order - JSON first, JSONC second - and loads the `permission:` frontmatter of `.opencode/agents/<name>.md`, keeping each declaration's exact repository-relative source path.
 - `src/lib/types.ts` defines the shared report, policy, and permission-action types.
-- `test/` holds the focused unit and integration tests, fixtures, and helpers.
+- `test/` holds the focused unit and integration tests, fixtures, and helpers; tests mirror `src/` (`test/lib/` covers `src/lib/`).
 
 ## Portability and Working Directory
 
