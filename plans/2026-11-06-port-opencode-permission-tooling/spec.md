@@ -48,7 +48,6 @@ skills/opencode-permissions/               # SKILL.md, README, scripts/{inspect.
 skills/opencode-permission-optimizer/      # SKILL.md, README, references/, scripts/{summarize.sh,list-agents.sh,summarize.ts,lib/,test/}
 .claude/skills/opencode-permissions                # symlink to the skill, as the toolkit links its own
 .claude/skills/opencode-permission-optimizer       # symlink
-docs/agents/opencode-permission-optimizer.md       # role doc for this repository
 docs/TOOLKIT-UPGRADE.md                            # agent instructions for upgrading the toolkit
 ```
 
@@ -88,7 +87,7 @@ The skills CLI discovers skills in `skills/`, `.agents/skills/` and `.claude/ski
 - `opencode-permissions`: `inspect.ts` with `lib/` modules for JSONC parsing, the `opencode` runtime adapter and inspection. The 809-line `inspection.mjs` is decomposed to meet the 40-line function rule while porting; behavior is preserved and guarded by the ported tests.
 - `opencode-permission-optimizer`: `summarize.ts`, `list-agents.sh`, `lib/` for observation reading and repository identity, plus the existing `references/`.
 - Report output stays repository-local: each command writes complete JSON to an ignored `.temp/` file and prints only `output file: .temp/<name>`; the caller reads it and deletes that exact file. This needs no `external_directory` grant in consumer repositories. This repository gains `.temp/` in `.gitignore`.
-- Examples and fixtures replace `pnpm`, `/tmp/bikes-local` and `bikes-local` identities with neutral values. The optional `docs/agents/opencode-permission-optimizer.md` reference stays "read when present".
+- Examples and fixtures replace `pnpm`, `/tmp/bikes-local` and `bikes-local` identities with neutral values. The generic policy-source guidance lives in the optimizer skill's `references/opencode-permission-model.md`; no repository guide exists.
 
 ### Plugin
 
@@ -98,7 +97,7 @@ Behavior is unchanged: it records `permission.asked`, `permission.replied` and `
 
 - The agent keeps its self-protection (it cannot edit its own definition) and its confirmed-edit model. Its permission rules are tidied: duplicates and a reference to a script that does not exist are removed, and paths use `.temp/`.
 - The agent is a copy-in file. Having the plugin register it through a `config` hook was rejected because it would hide a policy-editing agent's permissions from the consumer's own review.
-- `docs/agents/opencode-permission-optimizer.md` keeps the generic "Load" and "Policy sources" parts adapted to this repository. The sister's copied "current policy values" and native-role override sections are dropped; the inspector reports effective policy and copies would go stale.
+- The optimizer skill's `references/opencode-permission-model.md` holds the generic policy-source and role-guidance content. The sister's copied "current policy values" and native-role override sections are dropped; the inspector reports effective policy and copies would go stale. No repository-level guide exists.
 
 ## Data flow
 

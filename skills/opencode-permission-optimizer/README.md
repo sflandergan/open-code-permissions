@@ -9,7 +9,7 @@ The skill scripts are TypeScript run by Bun. Install Bun and ensure `bun` is on 
 - `SKILL.md` — the executable advisory workflow.
 - `references/opencode-permission-model.md` — generic OpenCode permission semantics.
 - `references/native-roles.md` — role guidance for permission-relevant native agents.
-- `scripts/` — the evidence exporter and its tests.
+- `scripts/` — the agent permission report script and its tests.
 
 The package runs from its own files and the sibling `opencode-permissions` inspector; it does not require any repository document.
 Install it under `.agents/skills/opencode-permission-optimizer/` or a global skills directory; the wrappers resolve their own location.
@@ -22,7 +22,7 @@ List the enabled agents:
 bash "scripts/list-agents.sh"
 ```
 
-Export one agent's evidence summary:
+Write the agent permission report:
 
 ```bash
 bash "scripts/agent-permission-report.sh" --agent "<agent>" [--days <n>]
@@ -58,7 +58,7 @@ The plugin writes the observation database in the user's application-data direct
 - **Windows**: `%LOCALAPPDATA%\opencode\permission-optimizer\observations.sqlite`
 
 Override the location with `OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH`.
-The exporter opens a compatible database read-only and invokes `../opencode-permissions/scripts/inspect.sh` for the `list-agents --json` and `show-effective <agent> --json` reports, which are temporary and removed after they are read.
+The report script opens a compatible database read-only and invokes `../opencode-permissions/scripts/inspect.sh` for the `list-agents --json` and `show-effective <agent> --json` reports, which are temporary and removed after they are read.
 
 ## Privacy
 

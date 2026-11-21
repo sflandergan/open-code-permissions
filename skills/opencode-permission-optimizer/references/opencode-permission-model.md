@@ -1,7 +1,7 @@
 # OpenCode Permission Model
 
 Generic OpenCode permission semantics the optimizer relies on.
-Repository-specific policy values are not kept here; read them from the exported effective policy.
+Policy values differ per repository; read the selected agent's rules from the exported effective policy rather than assuming them.
 
 ## Actions and evaluation
 
@@ -39,6 +39,13 @@ A runtime- or plugin-added tool files under its own name.
 - Recognized file commands in `bash` get a limited external-path scan, but that scan does not sandbox `bash`.
 - `bash` redirects are skipped by the external-directory scan and remain governed by the complete `bash` command.
 - OpenCode evaluates parsed command nodes independently, including nodes inside substitutions, pipelines, and compound statements.
+
+## Policy sources
+
+- Repository-shared permissions: the `permission` section of `opencode.json` and `opencode.jsonc`.
+- Root-config agent permissions: `agent.<name>.permission` in `opencode.json` / `opencode.jsonc`.
+- Agent-file permissions: the `permission:` frontmatter of `.opencode/agents/<name>.md`.
+- Role guidance for a custom agent: `.opencode/agents/<name>.md`, every skill it references with its `SKILL.md`, every file each `SKILL.md` references, and every applicable `AGENTS.md` (repository root and nested).
 
 ## Bash authority limit
 

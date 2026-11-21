@@ -1,6 +1,6 @@
 ---
 name: opencode-permission-optimizer
-description: Advise on repeated OpenCode permission decisions from recorded evidence; never changes policy.
+description: Recommend OpenCode permission rules for one agent from its recorded permission decisions; recommendations are applied only through the opencode-permissions skill.
 ---
 
 # Advisory Permission Optimizer
@@ -17,7 +17,7 @@ List the enabled agents:
 bash "scripts/list-agents.sh"
 ```
 
-Export one agent's evidence summary:
+Write the agent permission report:
 
 ```bash
 bash "scripts/agent-permission-report.sh" --agent "<agent>" [--days <n>]
@@ -27,35 +27,36 @@ bash "scripts/agent-permission-report.sh" --agent "<agent>" [--days <n>]
 Each command writes its full JSON to an ignored `.temp/` file and prints only `output file: <path>` on stdout; read that exact file completely, then delete only that exact path with `rm -- <path>`.
 Never use a wildcard or directory-wide cleanup and never commit exact command history or temporary output.
 Both commands accept `--help`/`-h`, which prints usage to stdout and exits 0 without creating an output file.
-Read `docs/agents/opencode-permission-optimizer.md` when present for which policy sources the inspector loads; the commands above run without it.
 
 ## Definitions
 
 - **permission kind** — the identifier a request is filed under. OpenCode defines `read`, `edit`, `glob`, `grep`, `bash`, `task`, `skill`, `lsp`, `question`, `webfetch`, `websearch`, `external_directory`, and `doom_loop`. A runtime- or plugin-added tool files under its own name; recommend a rule for that exact name and never rename it.
 - **semantic operation** — what a command does, not its executable: `git diff` and `git fetch` are different operations though both start with `git`.
-- **authority classification** — a capability an operation needs: `local read`, `local write`, `destructive`, `code-executing`, `network read`, `external mutation`. One operation can carry several.
+- **authority classification** — a capability an operation needs: `local read` (`git status`), `local write` (`git add`), `destructive` (`rm -rf build`), `code-executing` (`bun test`, `npm run …`), `network read` (`git fetch`), `external mutation` (`git push`, `gh pr create`). One operation can carry several.
 - **winning rule** — the last matching rule in the complete ordered effective policy, because OpenCode is last-match-wins.
 - **Bash permission wildcard** — a `bash` rule pattern such as `git diff *`, where `*` matches any run of characters, so the rule admits every command the pattern's text matches.
 - **`external_directory`** — an OpenCode permission setting that gates tool access to paths outside the working directory; its input is an absolute directory glob. Read the selected agent's actual `external_directory` rules from the exported effective policy; their values are configuration, not fixed by this skill.
 
-## Workflow
+## Recommend
 
-1. Run `list-agents.sh`, read its output file, and ask the owner to select exactly one agent by its exact returned name; do not infer or broaden the name.
-2. Run `agent-permission-report.sh` for that agent, read the complete summary, and read the role guidance for the selected agent (`references/native-roles.md` for a native agent, the agent's own definition and referenced skills for a custom agent).
-3. Treat exact inputs, counts, timestamps, sessions, and worktrees as evidence, not conclusions.
-4. Group inputs by semantic operation, not by executable or by each argument and file path; generalize repeated forms of one understood operation.
+1. Run `list-agents.sh` and read its output file. When the owner's request names exactly one agent that appears in the list, use it; otherwise ask the owner to choose one agent from the list. Never guess or broaden a name.
+2. Run `agent-permission-report.sh --agent <agent>`, read the complete report, and read the agent's role guidance (`references/native-roles.md` for a native agent; the policy sources and role guidance listed in `references/opencode-permission-model.md` for a custom agent).
+3. Use the report's requested patterns, counts, timestamps, sessions and worktrees only to find which operations the agent repeatedly needed and how recently. Never derive a recommendation's action from counts alone; the action comes from role fit, authority classification and path analysis in steps 5–8.
+4. Group requested patterns by semantic operation, not by executable or by each argument and file path; generalize repeated forms of one understood operation.
 5. Assign every operation all applicable authority classifications.
-6. Evaluate each input's complete behavior — paths, redirects, `cd`, substitutions, wrappers, compound statements — against the complete ordered effective policy with last-match-wins, and report the winning rule and current action as advisory judgment.
-7. Research unfamiliar behavior through bounded local help or authoritative documentation. If it stays materially uncertain, recommend `ask` and put the specific open question to the owner; do not deny a merely unfamiliar but ordinary command.
+6. Evaluate each requested pattern's complete behavior — paths, redirects, `cd`, substitutions, wrappers, compound statements — against the complete ordered effective policy with last-match-wins, and report the winning rule and current action as advisory judgment.
+7. When you do not know what a command does, ask the owner what it does and why the agent runs it before recommending. If the answer leaves the effect uncertain, recommend `ask` and state the open question; do not recommend `deny` for an ordinary command only because it is unfamiliar.
 8. Recommend `allow`, `ask`, `deny`, or a safer built-in alternative for the same permission kind the request used; a `bash` request gets a `bash` rule.
-9. Present the report as unapplied recommendations and ask the owner to select which to pursue.
-10. Hand only the owner-selected recommendations to the `opencode-permissions` management workflow through its `prepare` step, with the target agent, permission, pattern, proposed action, rationale, complete evidence, winning-rule findings, wildcard expansion, and path or redirect concerns.
-11. The management workflow locates the editable source, shows the exact ordered diff, and requires the owner to confirm those exact bytes before it applies and re-inspects.
-12. Owner selection of a recommendation authorizes no edit; only the management workflow's exact-diff confirmation authorizes mutation, and this skill performs none.
+9. Present the report labelled `Policy recommendations (not yet applied)` and ask the owner which recommendations to pursue.
+
+## Apply through opencode-permissions
+
+1. Pass only the owner-selected recommendations to the `opencode-permissions` skill's `prepare` step, with target agent, permission, pattern, proposed action, rationale, the report figures used, winning-rule findings, wildcard expansion, and path or redirect concerns.
+2. That skill locates the editable source, shows the exact ordered diff, and applies it only after the owner confirms that diff; this skill edits nothing.
 
 ## Wildcards and the sed example
 
-For every proposed `allow`, propose the broadest reusable wildcard that adds no new authority classification and crosses no unapproved path boundary, then enumerate the materially different command forms and targets it newly admits.
+For every proposed `allow`, choose the broadest wildcard that admits no command with an authority classification the observed operation lacks (for example, `git *` would add `git push`'s external mutation to `git status`'s local read) and crosses no unapproved path boundary; then list the materially different command forms and targets it newly admits.
 Do not turn observed history into a per-argument or per-file allowlist.
 
 Guard a read-only command against its mutating forms with a later deny under last-match-wins.
@@ -75,7 +76,6 @@ Every redirect in a compound command counts; one denied or unresolved target den
 
 ## Report
 
-Label the report `Policy recommendations (not yet applied)`.
 For each semantic operation give: evidence window, all applicable classifications, the winning action and rule you determined, the recommendation, the wildcard and what it newly admits, rationale, and rejected alternatives.
 Recommend `allow` when the capability is normal for the job, predictably scoped, ordinarily reversible, and does not bypass an owner-controlled step.
 Recommend `ask` when the capability may serve the job but is destructive, externally visible, unusually broad, hard to recover from, or depends on context the permission model cannot verify.
@@ -86,7 +86,7 @@ Never hide a redirect or added authority inside a broader read-oriented recommen
 ## Failures
 
 - Missing database: no observations collected; make no recommendation.
-- Incompatible schema or failed migration: stop without altering observations; the plugin and exporter must be updated together.
+- Incompatible schema or failed migration: stop without altering observations; the plugin and the optimizer reader must be updated together.
 - Failed policy inspection: stop all advice because coverage is unknown.
 - Missing role guidance: no recommendation for new authority.
 - Behavior still uncertain after bounded research: raise to the owner as `ask`.
