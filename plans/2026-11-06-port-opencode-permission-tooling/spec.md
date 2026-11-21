@@ -42,10 +42,10 @@ scripts/
   mark-internal-skills.ts     # hides toolkit skills; --check mode
   check-package.ts            # asserts npm pack contents
 .opencode/plugins/permission-optimizer.ts          # single-export plugin entry
-.opencode/plugins/permission-optimizer/            # plugin code, schema.sql, migrations/, README, test/
+.opencode/plugins/permission-optimizer/            # src/ modules, schema.sql, migrations/, README, test/
 .opencode/agents/opencode-permissions.md           # agent
-skills/opencode-permissions/               # SKILL.md, README, scripts/{inspect.sh,inspect.ts,lib/,test/}
-skills/opencode-permission-optimizer/      # SKILL.md, README, references/, scripts/{summarize.sh,list-agents.sh,summarize.ts,lib/,test/}
+skills/opencode-permissions/               # SKILL.md, README, references/, scripts/inspect.sh, src/{inspect.ts,lib/}, test/
+skills/opencode-permission-optimizer/      # SKILL.md, README, references/, scripts/{agent-permission-report.sh,list-agents.sh}, src/{agent-permission-report.ts,lib/}, test/
 .claude/skills/opencode-permissions                # symlink to the skill, as the toolkit links its own
 .claude/skills/opencode-permission-optimizer       # symlink
 docs/TOOLKIT-UPGRADE.md                            # agent instructions for upgrading the toolkit
@@ -85,7 +85,7 @@ The skills CLI discovers skills in `skills/`, `.agents/skills/` and `.claude/ski
 - Every `.mjs` becomes strict `.ts` run by Bun. Shell wrappers only start `bun <script>.ts` and exit with a clear message when `bun` is not on `PATH`. Consumers of the skills need Bun installed; READMEs say so.
 - `node:sqlite` becomes `bun:sqlite` in the optimizer reader.
 - `opencode-permissions`: `inspect.ts` with `lib/` modules for JSONC parsing, the `opencode` runtime adapter and inspection. The 809-line `inspection.mjs` is decomposed to meet the 40-line function rule while porting; behavior is preserved and guarded by the ported tests.
-- `opencode-permission-optimizer`: `summarize.ts`, `list-agents.sh`, `lib/` for observation reading and repository identity, plus the existing `references/`.
+- `opencode-permission-optimizer`: `agent-permission-report.ts`, `list-agents.sh`, `lib/` for observation reading and repository identity, plus the existing `references/`.
 - Report output stays repository-local: each command writes complete JSON to an ignored `.temp/` file and prints only `output file: .temp/<name>`; the caller reads it and deletes that exact file. This needs no `external_directory` grant in consumer repositories. This repository gains `.temp/` in `.gitignore`.
 - Examples and fixtures replace `pnpm`, `/tmp/bikes-local` and `bikes-local` identities with neutral values. The generic policy-source guidance lives in the optimizer skill's `references/opencode-permission-model.md`; no repository guide exists.
 
@@ -102,8 +102,8 @@ Behavior is unchanged: it records `permission.asked`, `permission.replied` and `
 ## Data flow
 
 1. OpenCode emits permission events; the plugin adapts, correlates and writes observations to the SQLite database in the user's application-data directory.
-2. `summarize.sh` runs `bun summarize.ts`, which reads the database (read-only) through the optimizer reader, rejects unsupported schema versions, and writes a JSON recommendation report to `.temp/`.
-3. `inspect.sh` runs `bun inspect.ts`, which calls the `opencode` CLI for the agent list and resolved configuration, parses repository policy files (JSONC and agent frontmatter) and writes the effective-policy report to `.temp/`.
+2. `agent-permission-report.sh` runs `bun ../src/agent-permission-report.ts`, which reads the database (read-only) through the optimizer reader, rejects unsupported schema versions, and writes a JSON recommendation report to `.temp/`.
+3. `inspect.sh` runs `bun ../src/inspect.ts`, which calls the `opencode` CLI for the agent list and resolved configuration, parses repository policy files (JSONC and agent frontmatter) and writes the effective-policy report to `.temp/`.
 4. The agent reads the reports, proposes exact edits, and applies them only after user confirmation, then re-inspects to verify the effective result.
 
 ## Error handling
