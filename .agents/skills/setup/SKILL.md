@@ -2,6 +2,8 @@
 name: setup
 description: Reconciles fresh installations, legacy adoption, upgrades, repairs, and reconfiguration of the agentic coding toolkit in an existing Git repository.
 user-invocable: true
+metadata:
+  internal: true
 ---
 
 # Setup

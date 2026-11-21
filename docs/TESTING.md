@@ -8,7 +8,7 @@
 
 ## Layout
 
-- Tests live in a `test/` directory beside the code they cover (for example `.opencode/plugins/<plugin>/test/` or `.agents/skills/<skill>/scripts/test/`), mirror the source structure, and are named `*.test.ts`.
+- Tests live in a `test/` directory beside the code they cover (for example `.opencode/plugins/<plugin>/test/` or `skills/<skill>/test/` beside `skills/<skill>/src/`), mirror the source structure, and are named `*.test.ts`.
 - Shared fixtures and helpers live under that `test/` directory (`test/fixtures/`, `test/helpers/`) and stay out of production exports.
 
 ## Rules

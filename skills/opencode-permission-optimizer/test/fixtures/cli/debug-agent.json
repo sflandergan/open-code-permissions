@@ -1,0 +1,10 @@
+{
+  "name": "implement",
+  "mode": "subagent",
+  "native": false,
+  "permission": [
+    { "permission": "bash", "pattern": "*", "action": "ask" },
+    { "permission": "read", "pattern": "*", "action": "allow" },
+    { "permission": "edit", "pattern": "*", "action": "ask" }
+  ]
+}

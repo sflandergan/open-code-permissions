@@ -1,0 +1,61 @@
+{
+  "description": "Derived decisions — always-derived, rejection-derived, and unresolved records never count as approvals or contrary evidence",
+  "compact": {
+    "reportVersion": 1,
+    "analysis": {
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": null, "effective": "2026-07-06T12:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 8, "retainedRequests": 8, "retainedExactInputKeys": 1, "changedExactInputKeys": 1, "actionableFamilies": 1 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "askCoverage": [],
+    "actionableFamilies": [
+      {
+        "permission": "bash", "family": "git",
+        "evidence": { "requests": 8, "qualifyingApprovals": 3, "distinctSessions": 3, "firstActivity": "2026-07-15T10:00:00.000Z", "lastActivity": "2026-08-02T16:00:00.000Z" },
+        "askInputs": [
+          {
+            "input": "git log --oneline", "coverage": "implicit-ask",
+            "requests": 8, "qualifyingApprovals": 3, "distinctSessions": 3,
+            "firstActivity": "2026-07-15T10:00:00.000Z", "lastActivity": "2026-08-02T16:00:00.000Z",
+            "derived": 4, "unresolved": 1
+          }
+        ],
+        "denyBoundaries": []
+      }
+    ],
+    "nonActionable": { "alreadyAllowedInputs": 0, "explicitlyDeniedInputs": 0, "insufficientEvidenceFamilies": 0, "unchangedFamilies": 0 }
+  },
+  "verbose": {
+    "reportVersion": 1,
+    "analysis": {
+      "databaseState": "available", "schemaVersion": 2,
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": null, "effective": "2026-07-06T12:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 8, "retainedRequests": 8, "retainedExactInputKeys": 1, "changedExactInputKeys": 1, "reportedFamilies": 1, "skippedFamilies": 0 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "candidates": [
+      {
+        "permission": "bash", "changed": true, "eligible": true, "family": "git",
+        "evidence": { "requests": 8, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-15T10:00:00.000Z", "lastActivity": "2026-08-02T16:00:00.000Z" },
+        "inputs": [
+          { "input": "git log --oneline", "changed": true, "evidence": { "requests": 8, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-15T10:00:00.000Z", "lastActivity": "2026-08-02T16:00:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 4, "unresolved": 1, "observationIds": [23, 19, 12] }, "coverage": { "action": "ask", "reason": "implicit-ask", "rule": null }, "disposition": "eligible" }
+        ]
+      }
+    ],
+    "skipped": [],
+    "eligible": [{ "permission": "bash", "inputs": ["git log --oneline"] }]
+  },
+  "expected": {
+    "capability": "browse recent commit history",
+    "recommendation": { "permission": "bash", "pattern": "git log --oneline", "action": "allow" },
+    "notes": ["The family stays at three qualifying approvals across three sessions: the two always-derived, two rejection-derived, and one unresolved record are reported as context and never counted as approvals or as contrary evidence. The rejection-derived records are not treated as direct rejections (directRejections stays 0)."]
+  }
+}

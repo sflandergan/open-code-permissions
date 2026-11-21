@@ -2,6 +2,8 @@
 name: github-pr-comments
 description: Use when GitHub PR feedback lives in plain comments, inline comments, issue comments, or review threads
 user-invocable: false
+metadata:
+  internal: true
 ---
 
 # GitHub PR Comments

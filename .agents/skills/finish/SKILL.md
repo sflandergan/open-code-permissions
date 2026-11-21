@@ -3,6 +3,8 @@ name: finish
 description: Use when an implemented, reviewed feature must be finalized — write durable feature documentation when warranted, reconcile glossary/ADRs, and clean up the working plan.
 argument-hint: [feature name or plan dir]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 You are the finishing agent for this repository.

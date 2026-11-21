@@ -7,10 +7,12 @@ Read this guide when planning, implementing, or reviewing TypeScript changes. Te
 - All code is TypeScript with `strict` enabled; do not weaken compiler options to make a change pass.
 - Bun is the runtime, package manager, and test runner.
 - Skill scripts are `.ts` files; shell wrappers only start them with `bun <script>.ts`.
+- Areas share no production code: the plugin, each published skill, and `scripts/` never import from one another, and the only shared contract is the observation database schema ([ADR 0001](adr/0001-plugin-owned-observation-schema.md)). A boundary test enforces the separation.
 
 ## Types and values
 
 - Use `unknown` rather than `any` for untrusted values (parsed JSON, config files, CLI output, plugin events) and narrow it at the boundary.
+- Type path-valued strings as `AbsolutePath` (each area — plugin, each published skill — owns a small `absolute-path.ts` because areas share no code). Convert raw strings once at the boundary (CLI arguments, environment, Git or OpenCode output, plugin input) with `toAbsolutePath`, which throws for relative paths.
 - Prefer named exports and `as const` objects over TypeScript enums.
 
 ## Names and files

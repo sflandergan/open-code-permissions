@@ -3,6 +3,8 @@ name: review-plan
 description: Use when reviewing a spec or plan before implementation — report findings first, track feedback in a ledger, and finalize the reviewed artifacts after approval.
 argument-hint: [path to spec or plan]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 You are the spec and plan review agent for this repository.

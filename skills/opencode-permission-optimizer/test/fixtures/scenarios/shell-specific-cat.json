@@ -1,0 +1,59 @@
+{
+  "description": "Shell-specific cat — concatenation evidenced, so a complete-form Bash cat rule is justified",
+  "compact": {
+    "reportVersion": 1,
+    "analysis": {
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": null, "effective": "2026-07-06T12:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 3, "retainedRequests": 3, "retainedExactInputKeys": 1, "changedExactInputKeys": 1, "actionableFamilies": 1 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "askCoverage": [
+      { "id": "ask-rule-0", "permission": "bash", "pattern": "*>*", "action": "ask", "position": 2, "origin": { "scope": "shared", "source": "opencode.json" }, "overrides": [] }
+    ],
+    "actionableFamilies": [
+      {
+        "permission": "bash", "family": "cat",
+        "evidence": { "requests": 3, "qualifyingApprovals": 3, "distinctSessions": 3, "firstActivity": "2026-07-21T13:00:00.000Z", "lastActivity": "2026-08-03T09:15:00.000Z" },
+        "askInputs": [
+          { "input": "cat src/a.txt src/b.txt > combined.txt", "coverage": "ask-rule-0", "requests": 3, "qualifyingApprovals": 3, "distinctSessions": 3, "firstActivity": "2026-07-21T13:00:00.000Z", "lastActivity": "2026-08-03T09:15:00.000Z" }
+        ],
+        "denyBoundaries": []
+      }
+    ],
+    "nonActionable": { "alreadyAllowedInputs": 0, "explicitlyDeniedInputs": 0, "insufficientEvidenceFamilies": 0, "unchangedFamilies": 0 }
+  },
+  "verbose": {
+    "reportVersion": 1,
+    "analysis": {
+      "databaseState": "available", "schemaVersion": 2,
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": null, "effective": "2026-07-06T12:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 3, "retainedRequests": 3, "retainedExactInputKeys": 1, "changedExactInputKeys": 1, "reportedFamilies": 1, "skippedFamilies": 0 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "candidates": [
+      {
+        "permission": "bash", "changed": true, "eligible": true, "family": "cat",
+        "evidence": { "requests": 3, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-21T13:00:00.000Z", "lastActivity": "2026-08-03T09:15:00.000Z" },
+        "inputs": [
+          { "input": "cat src/a.txt src/b.txt > combined.txt", "changed": true, "evidence": { "requests": 3, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-21T13:00:00.000Z", "lastActivity": "2026-08-03T09:15:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 0, "unresolved": 0, "observationIds": [16, 11, 5] }, "coverage": { "action": "ask", "reason": "explicit-rule", "rule": { "position": 2, "origin": { "scope": "shared", "source": "opencode.json" }, "overrides": [] } }, "disposition": "eligible" }
+        ]
+      }
+    ],
+    "skipped": [],
+    "eligible": [{ "permission": "bash", "inputs": ["cat src/a.txt src/b.txt > combined.txt"] }]
+  },
+  "expected": {
+    "capability": "concatenate workspace files into one output",
+    "recommendation": { "permission": "bash", "pattern": "cat src/a.txt src/b.txt > combined.txt", "action": "allow" },
+    "rejectedAlternatives": ["cat *", "built-in read tool"],
+    "notes": ["The built-in read tool cannot concatenate, so shell-specific behavior is evidenced. Only the complete evidenced form is proposed; the pattern never claims a workspace filesystem sandbox, and containment is justified textually for the exact inputs and output path."]
+  }
+}

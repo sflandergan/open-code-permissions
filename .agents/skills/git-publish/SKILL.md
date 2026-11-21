@@ -2,6 +2,8 @@
 name: git-publish
 description: Use when a workflow must publish the current non-protected branch to GitHub, ensure a PR exists, or force-update a retained PR head branch under a lease.
 user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Publish the Current Branch

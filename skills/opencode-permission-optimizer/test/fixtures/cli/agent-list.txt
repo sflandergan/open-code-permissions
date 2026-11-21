@@ -1,0 +1,18 @@
+implement (subagent)
+  [
+  {
+    "permission": "bash",
+    "pattern": "*",
+    "action": "ask"
+  },
+  {
+    "permission": "read",
+    "pattern": "*",
+    "action": "allow"
+  },
+  {
+    "permission": "edit",
+    "pattern": "*",
+    "action": "ask"
+  }
+]

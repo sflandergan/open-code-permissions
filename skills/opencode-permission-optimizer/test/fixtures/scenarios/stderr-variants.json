@@ -1,0 +1,75 @@
+{
+  "description": "Observed benign stderr variants inherit one base capability without dictating literal companion rules",
+  "threshold": { "qualifyingApprovals": 3, "qualifyingSessions": 2 },
+  "observed": ["git status", "git status 2>/dev/null", "git status 2>&1"],
+  "unobserved": ["git status 2>/dev/null 2>&1", "git status > /tmp/out"],
+  "compact": {
+    "reportVersion": 1,
+    "analysis": {
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": null, "effective": "2026-07-06T12:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 3, "retainedRequests": 3, "retainedExactInputKeys": 3, "changedExactInputKeys": 3, "actionableFamilies": 1 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "askCoverage": [],
+    "actionableFamilies": [
+      {
+        "permission": "bash", "family": "git",
+        "evidence": { "requests": 3, "qualifyingApprovals": 3, "distinctSessions": 3, "firstActivity": "2026-07-20T09:00:00.000Z", "lastActivity": "2026-08-01T14:30:00.000Z" },
+        "askInputs": [
+          { "input": "git status", "coverage": "implicit-ask", "requests": 1, "qualifyingApprovals": 1, "distinctSessions": 1, "firstActivity": "2026-07-20T09:00:00.000Z", "lastActivity": "2026-07-20T09:00:00.000Z" },
+          { "input": "git status 2>/dev/null", "coverage": "implicit-ask", "requests": 1, "qualifyingApprovals": 1, "distinctSessions": 1, "firstActivity": "2026-07-27T10:15:00.000Z", "lastActivity": "2026-07-27T10:15:00.000Z" },
+          { "input": "git status 2>&1", "coverage": "implicit-ask", "requests": 1, "qualifyingApprovals": 1, "distinctSessions": 1, "firstActivity": "2026-08-01T14:30:00.000Z", "lastActivity": "2026-08-01T14:30:00.000Z" }
+        ],
+        "denyBoundaries": []
+      }
+    ],
+    "nonActionable": { "alreadyAllowedInputs": 0, "explicitlyDeniedInputs": 0, "insufficientEvidenceFamilies": 0, "unchangedFamilies": 0 }
+  },
+  "verbose": {
+    "reportVersion": 1,
+    "analysis": {
+      "databaseState": "available", "schemaVersion": 2,
+      "repository": { "identity": "github.com/example/portfolio-app", "identitySource": "origin", "worktree": "/worktrees/portfolio-app" },
+      "agent": "implement",
+      "retainedInterval": { "from": "2026-07-06T12:00:00.000Z", "to": "2026-08-05T12:00:00.000Z" },
+      "selectionCutoff": { "stored": null, "effective": "2026-07-06T12:00:00.000Z" },
+      "snapshotThrough": "2026-08-05T12:00:00.000Z",
+      "counts": { "retainedObservations": 3, "retainedRequests": 3, "retainedExactInputKeys": 3, "changedExactInputKeys": 3, "reportedFamilies": 1, "skippedFamilies": 0 }
+    },
+    "policyReport": { "agent": { "name": "implement", "mode": "subagent", "status": "custom" }, "inspector": { "command": ["bash", "inspect.sh", "show-effective", "implement", "--json"], "invocations": 1 } },
+    "candidates": [
+      {
+        "permission": "bash", "changed": true, "eligible": true, "family": "git",
+        "evidence": { "requests": 3, "qualifyingApprovals": 3, "qualifyingSessionIds": ["s1", "s2", "s3"], "qualifyingSessionCount": 3, "firstActivity": "2026-07-20T09:00:00.000Z", "lastActivity": "2026-08-01T14:30:00.000Z" },
+        "inputs": [
+          { "input": "git status", "changed": true, "evidence": { "requests": 1, "qualifyingApprovals": 1, "qualifyingSessionIds": ["s1"], "qualifyingSessionCount": 1, "firstActivity": "2026-07-20T09:00:00.000Z", "lastActivity": "2026-07-20T09:00:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 0, "unresolved": 0, "observationIds": [12] }, "coverage": { "action": "ask", "reason": "implicit-ask", "rule": null }, "disposition": "eligible" },
+          { "input": "git status 2>/dev/null", "changed": true, "evidence": { "requests": 1, "qualifyingApprovals": 1, "qualifyingSessionIds": ["s2"], "qualifyingSessionCount": 1, "firstActivity": "2026-07-27T10:15:00.000Z", "lastActivity": "2026-07-27T10:15:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 0, "unresolved": 0, "observationIds": [9] }, "coverage": { "action": "ask", "reason": "implicit-ask", "rule": null }, "disposition": "eligible" },
+          { "input": "git status 2>&1", "changed": true, "evidence": { "requests": 1, "qualifyingApprovals": 1, "qualifyingSessionIds": ["s3"], "qualifyingSessionCount": 1, "firstActivity": "2026-08-01T14:30:00.000Z", "lastActivity": "2026-08-01T14:30:00.000Z", "directRejections": 0, "directRejectionTimestamps": [], "derived": 0, "unresolved": 0, "observationIds": [6] }, "coverage": { "action": "ask", "reason": "implicit-ask", "rule": null }, "disposition": "eligible" }
+        ]
+      }
+    ],
+    "skipped": [],
+    "eligible": [{ "permission": "bash", "inputs": ["git status", "git status 2>/dev/null", "git status 2>&1"] }]
+  },
+  "expected": {
+    "capabilityInput": "git status",
+    "variantForms": ["2>/dev/null", "2>&1"],
+    "recommendationDependsOnIncrementalAuthority": true,
+    "readOnlyFamilyRecommendation": {
+      "rules": [
+        { "pattern": "git status *", "action": "allow" },
+        { "pattern": "git status 2>/dev/null", "action": "allow" },
+        { "pattern": "git status 2>&1", "action": "allow" }
+      ],
+      "ordering": ["base command rule", "broad redirect guards", "reviewed complete-command companions"]
+    },
+    "alreadyWriteCapableFamilyRecommendation": {
+      "rules": [{ "pattern": "bun *", "action": "allow", "position": "after redirect guards" }],
+      "forbidLiteralVariantEnumeration": true
+    }
+  }
+}

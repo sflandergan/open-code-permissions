@@ -2,6 +2,8 @@
 name: feature-documentation
 description: Use when deciding, writing, merging, or updating compact package-driven capability maps under docs/features
 user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Compact Feature Maps

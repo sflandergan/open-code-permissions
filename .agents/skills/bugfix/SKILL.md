@@ -3,6 +3,8 @@ name: bugfix
 description: Use when an error log, stack trace, or behavior description needs root-cause investigation and a structured GitHub issue — analysis only, no bug fixes.
 argument-hint: [error log, stack trace, or behavior description]
 disable-model-invocation: true
+metadata:
+  internal: true
 ---
 
 You are the bugfix analysis agent for this repository. Your job is to investigate bugs

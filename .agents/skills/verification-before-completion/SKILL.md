@@ -2,6 +2,8 @@
 name: verification-before-completion
 description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs — run the verification commands and confirm their output before making any success claim.
 user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Verification Before Completion
