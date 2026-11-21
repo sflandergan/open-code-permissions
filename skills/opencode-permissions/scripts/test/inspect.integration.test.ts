@@ -33,16 +33,6 @@ const DEBUG_AGENT_FIXTURE = readFileSync(join(fixturesDir, "debug-agent.json"), 
 const OPENCODE_JSON_FIXTURE = readFileSync(join(fixturesDir, "opencode.json"), "utf8")
 const AGENT_MD_FIXTURE = readFileSync(join(fixturesDir, "agent.md"), "utf8")
 
-// The inspector sanitizes the environment before launching opencode, so this
-// launcher supplies the fake's argv log path and fixture directory from its
-// own directory instead of relying on inherited fake-only variables.
-const FAKE_OPENCODE_LAUNCHER = `#!/bin/sh
-script_dir="$(cd "$(dirname "$0")" && pwd)"
-FAKE_OPENCODE_ARGV_LOG="$script_dir/opencode-argv.log" \\
-FAKE_OPENCODE_FIXTURE_DIR="$script_dir" \\
-exec bun "$script_dir/fake-opencode.ts" "$@"
-`
-
 /** A hermetic wrapper sandbox: fixture worktree, fake executables, and copied skill. */
 interface Sandbox {
   base: string
@@ -84,12 +74,13 @@ interface EffectiveReport {
 }
 
 /**
- * Copy the fake `git` and `opencode` executables into the sandbox bin
- * directory and write the runtime fixtures they serve. The fake opencode
- * records its argv to a log file named by its environment and answers
- * `agent list`, `debug config`, and `debug agent <name>` with the captured
- * fixture world; any `--version` probe fails because the inspector must never
- * ask for one.
+ * Copy the fake `git` executable, the `opencode` launcher, and the fake
+ * runtime script into the sandbox bin directory and write the runtime
+ * fixtures they serve. The launcher supplies the fake's argv log path and
+ * fixture directory from its own location because the inspector sanitizes the
+ * environment; the fake opencode then answers `agent list`, `debug config`,
+ * and `debug agent <name>` with the captured fixture world, and any
+ * `--version` probe fails because the inspector must never ask for one.
  */
 function createFakeExecutables(binDir: string): void {
   const gitPath = join(binDir, "git")
@@ -101,7 +92,7 @@ function createFakeExecutables(binDir: string): void {
   chmodSync(fakeOpencodePath, 0o755)
 
   const opencodePath = join(binDir, "opencode")
-  writeFileSync(opencodePath, FAKE_OPENCODE_LAUNCHER)
+  cpSync(join(fixturesDir, "fake-opencode-launcher.sh"), opencodePath)
   chmodSync(opencodePath, 0o755)
 
   writeFileSync(join(binDir, "agent-list.txt"), AGENT_LIST_FIXTURE)
