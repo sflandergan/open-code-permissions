@@ -33,7 +33,7 @@ running as the same OS user — same-user isolation is explicitly out of scope
 
 Existing databases are inspected read-only before any persistent change.
 Schema initialization and metadata writes commit atomically, and each asked
-insert/update with its ordered inputs commits as one transaction.
+insert/update with its ordered requested patterns commits as one transaction.
 
 ## Schema and migrations
 
@@ -57,7 +57,7 @@ once per hour during ordinary writes. No scheduler is required.
 
 ## Privacy
 
-- Exact permission inputs are stored unchanged.
+- Requested patterns are stored unchanged.
 - Tool output, conversation content, prompts, and arbitrary metadata are never stored.
 - Raw remote URLs are sanitized to `host/path` form before storage.
 - Filesystem modes protect observations from group/other OS accounts; they do not isolate processes running as the same OS user.

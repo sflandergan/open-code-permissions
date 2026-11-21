@@ -35,7 +35,7 @@ export type IdentityResolver = () => RepositoryIdentity
 
 /**
  * Receives recoverable operational warnings. The message is sanitized: it
- * names the operation and safe identifiers but never includes exact inputs,
+ * names the operation and safe identifiers but never includes requested patterns,
  * tool output, event metadata, message content, or raw remotes.
  */
 export type WarningSink = (message: string) => void

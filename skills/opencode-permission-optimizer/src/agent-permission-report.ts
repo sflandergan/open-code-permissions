@@ -24,7 +24,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const USAGE = `usage: agent-permission-report.ts --agent <agent> [--days <n>]`
 const HELP = `${USAGE}
 
-Export one agent's permission evidence as a single JSON document.
+Export one agent's permission report as a single JSON document.
 The public wrapper (agent-permission-report.sh) writes the JSON to an ignored .temp/ file
 and prints only "output file: <path>" on stdout; run through the wrapper,
 never direct, so exact command history stays out of the terminal.
@@ -127,7 +127,7 @@ export function parseArgs(argv: string[]): { agent: string; days: number | null 
 }
 
 /**
- * Build the complete permission evidence report for one agent. The database
+ * Build the complete agent permission report for one agent. The database
  * opens read-only; a missing database yields a valid empty report. An
  * incompatible schema throws `incompatible schema: expected <n>, found <n>`
  * naming both versions. The inspector runs twice (list-agents, show-effective)

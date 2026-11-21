@@ -1,6 +1,6 @@
 # OpenCode Permission Optimizer
 
-Advisory skill that exports retained permission evidence and one agent's complete effective policy, then recommends permission rules for owner review.
+Advisory skill that exports one agent's retained permission decision history and complete effective policy, then recommends permission rules for owner review.
 It never mutates policy files or the observation database.
 The skill scripts are TypeScript run by Bun. Install Bun and ensure `bun` is on `PATH` before using this skill.
 
@@ -61,7 +61,7 @@ Each command writes one complete JSON document to an ignored `.temp/` file and p
 Failures exit nonzero with an `error:` message on stderr and no output file.
 Both commands accept `--help`/`-h`, which prints usage to stdout and exits 0 without creating an output file.
 
-## Summary JSON
+## Report JSON
 
 `summaryVersion: 1`, with:
 
@@ -71,11 +71,11 @@ Both commands accept `--help`/`-h`, which prints usage to stdout and exits 0 wit
 - `agent.name`, `agent.mode`, and `agent.status`.
 - `counts`: `observations`, `approvals`, `rejections`, `unresolved`, and `distinctSessions`.
 - `effectivePolicy.rules`: the complete ordered effective policy from runtime inspection, each rule carrying permission, pattern, action, position, origin, and overrides.
-- `inputs`: flat exact-input facts with permission, request, decision, session, activity, and worktree fields.
+- `inputs`: flat requested-pattern facts with permission, request, decision, session, activity, and worktree fields.
 
-Approvals count only successful `once`/`always` observations with known repository and agent attribution; direct rejections and unresolved observations count separately and derived decisions add only to request counts.
-A missing database yields a valid empty summary: zero counts, no inputs, `schemaVersion: null`, `effectivePolicy: null`, and null agent mode and status.
-An incompatible schema or a failed runtime policy inspection stops without producing a summary file.
+Approvals count only successful `once`/`always` observations with a known observation origin; direct rejections and unresolved observations count separately and derived decisions add only to request counts.
+A missing database yields a valid empty report: zero counts, empty `inputs`, `schemaVersion: null`, `effectivePolicy: null`, and null agent mode and status.
+An incompatible schema or a failed runtime policy inspection stops without producing a report file.
 
 ## Database and policy access
 
@@ -90,7 +90,7 @@ The report script opens a compatible database read-only and invokes `../opencode
 
 ## Privacy
 
-Exact permission inputs are retained unchanged and may contain secrets present in requests.
+Requested patterns are retained unchanged and may contain secrets present in requests.
 Tool output, conversation content, prompts, and arbitrary metadata are not stored.
 Policy rules constrain tool requests; they do not sandbox the host user's filesystem, process, or network authority.
 

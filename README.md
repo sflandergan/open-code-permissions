@@ -2,7 +2,7 @@
 
 OpenCode plugin and skills for recording and reviewing permission observations, plus an agent that manages permission policy through confirmed direct edits.
 
-This repository ships one product with **one version**: the `version` in `package.json` is the only version, and the skills and agent carry none. A release is a single `vX.Y.Z` tag. Install the skills at the same tag as the npm version so the plugin and the optimizer reader agree on the SQLite schema (version 3).
+This repository ships one product with **one version**: the `version` in `package.json` is the only version, and the skills and agent carry none. A release is a single `vX.Y.Z` tag. Install the skills at the same tag as the npm version so the plugin and the optimizer reader agree on the SQLite schema (version 4).
 
 > The package is `private: true` until [issue #2](https://github.com/sflandergan/open-code-permissions/issues/2) adds release automation. It is publishable but not published.
 

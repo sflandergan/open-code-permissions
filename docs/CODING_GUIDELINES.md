@@ -7,6 +7,7 @@ Read this guide when planning, implementing, or reviewing TypeScript changes. Te
 - All code is TypeScript with `strict` enabled; do not weaken compiler options to make a change pass.
 - Bun is the runtime, package manager, and test runner.
 - Skill scripts are `.ts` files; shell wrappers only start them with `bun <script>.ts`.
+- Areas share no production code: the plugin, each published skill, and `scripts/` never import from one another, and the only shared contract is the observation database schema ([ADR 0001](adr/0001-plugin-owned-observation-schema.md)). A boundary test enforces the separation.
 
 ## Types and values
 
