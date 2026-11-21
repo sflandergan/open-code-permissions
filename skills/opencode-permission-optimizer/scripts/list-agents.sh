@@ -7,4 +7,11 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-exec bash "${script_dir}/../../opencode-permissions/scripts/inspect.sh" list-agents --json "$@"
+permissions_skill_dir="$(cd "${script_dir}/../.." && pwd)/opencode-permissions"
+expected_inspector="${permissions_skill_dir}/scripts/inspect.sh"
+if [ ! -x "${expected_inspector}" ]; then
+  printf 'error: opencode-permission-optimizer requires the opencode-permissions skill installed beside it (expected %s)\n' "${expected_inspector}" >&2
+  exit 1
+fi
+
+exec bash "${expected_inspector}" list-agents --json "$@"

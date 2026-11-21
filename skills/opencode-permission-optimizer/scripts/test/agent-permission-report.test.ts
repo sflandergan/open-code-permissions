@@ -1,36 +1,50 @@
-import { execFileSync } from "node:child_process"
-import { closeSync, existsSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync } from "node:fs"
+import { spawn, spawnSync, execFileSync } from "node:child_process"
+import {
+  closeSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { Database } from "bun:sqlite"
 import { expect, test } from "bun:test"
 import { RETENTION_DAYS, SCHEMA_VERSION } from "../lib/read-observations"
-import { parseArgs, runSummary } from "../summarize"
+import { toAbsolutePath } from "../lib/absolute-path"
+import { buildAgentPermissionReport, parseArgs } from "../agent-permission-report"
 import { createObservationDatabase, insertObservation } from "./helpers/observation-database"
 
 const IDENTITY = "github.com/user/repo"
 const NOW = new Date("2026-09-12T10:00:00.000Z")
-const summarizeShPath = join(import.meta.dirname, "..", "summarize.sh")
-const summarizeTsPath = join(import.meta.dirname, "..", "summarize.ts")
+const reportShPath = join(import.meta.dirname, "..", "agent-permission-report.sh")
+const reportTsPath = join(import.meta.dirname, "..", "agent-permission-report.ts")
 
 type InspectorRequest = { form: "list-agents" } | { form: "show-effective"; agent: string }
 
 function assertHelpText(stdout: string): void {
-  expect(stdout).toMatch(/^usage: summarize\.ts --agent <agent> \[--days <n>\]\n/)
-  expect(stdout).toMatch(/--agent <agent>\s+agent name to summarize/)
+  expect(stdout).toMatch(/^usage: agent-permission-report\.ts --agent <agent> \[--days <n>\]\n/)
+  expect(stdout).toMatch(/--agent <agent>\s+agent name to report on/)
   expect(stdout).toMatch(/--days <n>\s+retained window in days, capped at 30/)
   expect(stdout).toMatch(/-h, --help\s+show this help and exit/)
 }
 
 test("prints the help text when asked with either help flag", () => {
   for (const flag of ["--help", "-h"]) {
-    const stdout = execFileSync("bun", [summarizeTsPath, flag], { encoding: "utf8" })
+    const stdout = execFileSync("bun", [reportTsPath, flag], { encoding: "utf8" })
     assertHelpText(stdout)
   }
 })
 
 test("prints the help text when the help flag accompanies other arguments", () => {
-  const stdout = execFileSync("bun", [summarizeTsPath, "--agent", "implement", "--help"], { encoding: "utf8" })
+  const stdout = execFileSync("bun", [reportTsPath, "--agent", "implement", "--help"], { encoding: "utf8" })
   assertHelpText(stdout)
 })
 
@@ -38,7 +52,7 @@ test("prints the help text from the wrapper without creating an output file", ()
   const { cwd, cleanup } = createTestContext()
   try {
     for (const flag of ["--help", "-h"]) {
-      const stdout = execFileSync("bash", [summarizeShPath, flag], { cwd, encoding: "utf8" })
+      const stdout = execFileSync("bash", [reportShPath, flag], { cwd, encoding: "utf8" })
       assertHelpText(stdout)
       expect(stdout).toMatch(/^usage:/)
       expect(existsSync(join(cwd, ".temp"))).toEqual(false)
@@ -58,6 +72,117 @@ function createTestContext(): { cwd: string; cleanup: () => void } {
   }
 }
 
+interface SkillCopy {
+  root: string
+  scriptsDirectory: string
+  expectedInspectorPath: string
+}
+
+function copySkillScripts(): SkillCopy {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "permission-optimizer-skill-")))
+  const scriptsDirectory = join(root, "skills", "opencode-permission-optimizer", "scripts")
+  mkdirSync(scriptsDirectory, { recursive: true })
+  for (const scriptName of ["agent-permission-report.sh", "agent-permission-report.ts", "list-agents.sh"]) {
+    cpSync(join(import.meta.dirname, "..", scriptName), join(scriptsDirectory, scriptName))
+  }
+  return {
+    root,
+    scriptsDirectory,
+    expectedInspectorPath: join(root, "skills", "opencode-permissions", "scripts", "inspect.sh"),
+  }
+}
+
+function siblingMissingMessage(expectedInspectorPath: string): string {
+  return `error: opencode-permission-optimizer requires the opencode-permissions skill installed beside it (expected ${expectedInspectorPath})\n`
+}
+
+function outputFileNames(cwd: string): string[] {
+  const tempDirectory = join(cwd, ".temp")
+  if (!existsSync(tempDirectory)) return []
+  return readdirSync(tempDirectory).filter((name) => name.startsWith("permission-optimizer-output-"))
+}
+
+async function waitForPath(path: string): Promise<void> {
+  const deadline = Date.now() + 5000
+  while (!existsSync(path)) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${path}`)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
+
+test("fails with a clear message when the sibling inspector skill is missing", () => {
+  const { cwd, cleanup } = createTestContext()
+  const skillCopy = copySkillScripts()
+  try {
+    const failure = spawnSync("bash", [join(skillCopy.scriptsDirectory, "agent-permission-report.sh"), "--agent", "build"], {
+      cwd,
+      encoding: "utf8",
+    })
+    expect(failure.status).not.toEqual(0)
+    expect(failure.stderr).toEqual(siblingMissingMessage(skillCopy.expectedInspectorPath))
+    expect(existsSync(join(cwd, ".temp"))).toEqual(false)
+  } finally {
+    cleanup()
+    rmSync(skillCopy.root, { recursive: true, force: true })
+  }
+})
+
+test("lists agents only when the sibling inspector is installed", () => {
+  const { cwd, cleanup } = createTestContext()
+  const skillCopy = copySkillScripts()
+  try {
+    const wrapperPath = join(skillCopy.scriptsDirectory, "list-agents.sh")
+    const missing = spawnSync("bash", [wrapperPath], { cwd, encoding: "utf8" })
+    expect(missing.status).not.toEqual(0)
+    expect(missing.stderr).toEqual(siblingMissingMessage(skillCopy.expectedInspectorPath))
+
+    mkdirSync(dirname(skillCopy.expectedInspectorPath), { recursive: true })
+    writeFileSync(skillCopy.expectedInspectorPath, "#!/usr/bin/env bash\nprintf 'fake agents\\n'\n", { mode: 0o755 })
+    const installed = spawnSync("bash", [wrapperPath], { cwd, encoding: "utf8" })
+    expect(installed.status).toEqual(0)
+    expect(installed.stdout).toEqual("fake agents\n")
+  } finally {
+    cleanup()
+    rmSync(skillCopy.root, { recursive: true, force: true })
+  }
+})
+
+test("leaves no output file when the report is interrupted", async () => {
+  const { cwd, cleanup } = createTestContext()
+  const fakeBinDirectory = realpathSync(mkdtempSync(join(tmpdir(), "permission-optimizer-fake-bun-")))
+  const startedPath = join(cwd, "bun-started")
+  try {
+    writeFileSync(join(fakeBinDirectory, "bun"), `#!/usr/bin/env bash\n: > "${startedPath}"\nsleep 30\n`, { mode: 0o755 })
+    const child = spawn("bash", [reportShPath, "--agent", "build"], {
+      cwd,
+      env: { ...process.env, PATH: `${fakeBinDirectory}:${process.env.PATH ?? ""}` },
+      stdio: ["ignore", "ignore", "ignore"],
+      detached: true,
+    })
+    const childPid = child.pid
+    if (childPid === undefined) throw new Error("failed to start the agent permission report wrapper")
+    try {
+      await waitForPath(startedPath)
+      process.kill(-childPid, "SIGTERM")
+      const exitCode = await new Promise<number | null>((resolve) => {
+        child.on("close", (code) => resolve(code))
+      })
+      expect(exitCode).not.toBeNull()
+      expect(exitCode).not.toEqual(0)
+    } finally {
+      try {
+        process.kill(-childPid, "SIGKILL")
+      } catch {
+        // The process group is already gone after the expected termination.
+      }
+    }
+    expect(outputFileNames(cwd)).toEqual([])
+  } finally {
+    cleanup()
+    rmSync(fakeBinDirectory, { recursive: true, force: true })
+  }
+})
+
 // The missing-database route keeps these wrapper tests hermetic.
 test("exports the requested window for an absent database and prints only its path", () => {
   const { cwd, cleanup } = createTestContext()
@@ -66,7 +191,7 @@ test("exports the requested window for an absent database and prints only its pa
     const stderrFd = openSync(stderrPath, "w")
     let stdout: string
     try {
-      stdout = execFileSync("bash", [summarizeShPath, "--agent", "implement", "--days", "7"], {
+      stdout = execFileSync("bash", [reportShPath, "--agent", "implement", "--days", "7"], {
         cwd,
         env: { ...process.env, OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH: join(cwd, "missing.sqlite") },
         encoding: "utf8",
@@ -78,7 +203,7 @@ test("exports the requested window for an absent database and prints only its pa
     expect(readFileSync(stderrPath, "utf8")).toEqual("")
     const outputMatch = stdout.match(/^output file: (\.temp\/permission-optimizer-output-[A-Za-z0-9]+)\n$/)
     if (outputMatch === null) {
-      throw new Error(`summarize.sh did not print an output file path: ${JSON.stringify(stdout)}`)
+      throw new Error(`agent-permission-report.sh did not print an output file path: ${JSON.stringify(stdout)}`)
     }
     const outputPath = join(cwd, outputMatch[1])
     const summary: unknown = JSON.parse(readFileSync(outputPath, "utf8"))
@@ -102,7 +227,7 @@ test("leaves no output file when the requested window is invalid", () => {
   try {
     let failure: { stdout: string; stderr: string } | null = null
     try {
-      execFileSync("bash", [summarizeShPath, "--agent", "implement", "--days", "0"], {
+      execFileSync("bash", [reportShPath, "--agent", "implement", "--days", "0"], {
         cwd,
         env: { ...process.env, OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH: join(cwd, "missing.sqlite") },
         encoding: "utf8",
@@ -112,7 +237,7 @@ test("leaves no output file when the requested window is invalid", () => {
       failure = error as { stdout: string; stderr: string }
     }
     expect(failure).not.toBeNull()
-    if (failure === null) throw new Error("expected summarize.sh to reject an invalid retention window")
+    if (failure === null) throw new Error("expected agent-permission-report.sh to reject an invalid retention window")
     expect(failure.stdout).toEqual("")
     expect(failure.stderr).toMatch(/^error:/)
     const outputFiles = readdirSync(join(cwd, ".temp"), { withFileTypes: true })
@@ -154,8 +279,8 @@ test("accepts a positive retention window and rejects invalid or duplicate optio
 test("reports the requested retention window in the summary interval", () => {
   const { cwd, cleanup } = createTestContext()
   try {
-    const summary = runSummary({
-      agent: "implement", cwd, now: NOW, days: 7,
+    const summary = buildAgentPermissionReport({
+      agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, days: 7,
       databasePath: join(cwd, "missing.sqlite"), invokeInspector: fakeInspector([]),
     })
     expect(summary.retainedInterval).toEqual({
@@ -170,8 +295,8 @@ test("reports the requested retention window in the summary interval", () => {
 test("caps the retention window at the maximum retention period", () => {
   const { cwd, cleanup } = createTestContext()
   try {
-    const summary = runSummary({
-      agent: "implement", cwd, now: NOW, days: 90,
+    const summary = buildAgentPermissionReport({
+      agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, days: 90,
       databasePath: join(cwd, "missing.sqlite"), invokeInspector: fakeInspector([]),
     })
     expect(summary.retainedInterval).toEqual({
@@ -189,8 +314,8 @@ test("exports repository, agent, counts, policy, and requested patterns for an a
     const dbPath = createObservationDatabase(cwd)
     insertObservation(dbPath, { requestId: "r1", sessionId: "s1", permission: "bash", patterns: ["git status"], worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
     const invocations: InspectorRequest[] = []
-    const summary = runSummary({
-      agent: "implement", cwd, now: NOW, databasePath: dbPath,
+    const summary = buildAgentPermissionReport({
+      agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, databasePath: dbPath,
       invokeInspector: fakeInspector(invocations),
     })
     expect(summary.summaryVersion).toEqual(1)
@@ -232,8 +357,8 @@ test("exports repository, agent, counts, policy, and requested patterns for an a
 test("reports an absent database as an empty summary with no policy or requested patterns", () => {
   const { cwd, cleanup } = createTestContext()
   try {
-    const summary = runSummary({
-      agent: "implement", cwd, now: NOW, databasePath: join(cwd, "missing.sqlite"),
+    const summary = buildAgentPermissionReport({
+      agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, databasePath: join(cwd, "missing.sqlite"),
       invokeInspector: fakeInspector([]),
     })
     expect(summary.databaseState).toEqual("missing")
@@ -251,8 +376,8 @@ test("fails the export when policy inspection fails", () => {
   try {
     const dbPath = createObservationDatabase(cwd)
     insertObservation(dbPath, { requestId: "r1", sessionId: "s1", permission: "bash", patterns: ["git status"], worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
-    expect(() => runSummary({
-      agent: "implement", cwd, now: NOW, databasePath: dbPath,
+    expect(() => buildAgentPermissionReport({
+      agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, databasePath: dbPath,
       invokeInspector: () => { throw new Error("inspector failed") },
     })).toThrow(/inspector failed/)
   } finally {
@@ -265,8 +390,8 @@ test("fails the export when the agent is absent from the runtime inventory", () 
   try {
     const dbPath = createObservationDatabase(cwd)
     insertObservation(dbPath, { requestId: "r1", sessionId: "s1", permission: "bash", patterns: ["git status"], worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z" })
-    expect(() => runSummary({
-      agent: "ghost", cwd, now: NOW, databasePath: dbPath,
+    expect(() => buildAgentPermissionReport({
+      agent: "ghost", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, databasePath: dbPath,
       invokeInspector: () => ({ agents: [] }),
     })).toThrow(/not found in the runtime agent inventory/)
   } finally {
@@ -281,7 +406,7 @@ test("fails the export naming the expected and found schema versions", () => {
     const writer = new Database(dbPath)
     writer.query("UPDATE schema_metadata SET version = ? WHERE id = 1").run(SCHEMA_VERSION - 1)
     writer.close()
-    expect(() => runSummary({ agent: "implement", cwd, now: NOW, databasePath: dbPath,
+    expect(() => buildAgentPermissionReport({ agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, databasePath: dbPath,
       invokeInspector: fakeInspector([]) })).toThrow(
       new RegExp(`incompatible schema.*expected ${SCHEMA_VERSION}.*found ${SCHEMA_VERSION - 1}`, "i"),
     )

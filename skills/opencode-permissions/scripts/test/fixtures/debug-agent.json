@@ -164,7 +164,7 @@
     },
     {
       "permission": "bash",
-      "pattern": "bash \"*/opencode-permission-optimizer/scripts/summarize.sh\" --agent *",
+      "pattern": "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *",
       "action": "allow"
     },
     {

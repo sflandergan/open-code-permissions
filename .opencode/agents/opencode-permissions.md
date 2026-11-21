@@ -40,12 +40,12 @@ permission:
     "*": deny
     "bash \"*/opencode-permissions/scripts/inspect.sh\" list-agents*": allow
     "bash \"*/opencode-permissions/scripts/inspect.sh\" show-effective*": allow
-    "bash \"*/opencode-permission-optimizer/scripts/summarize.sh\" --agent *": allow
+    "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *": allow
     "bash \"*/opencode-permission-optimizer/scripts/list-agents.sh\"*": allow
     "bash skills/opencode-permissions/scripts/inspect.sh list-agents*": allow
     "bash skills/opencode-permissions/scripts/inspect.sh show-effective*": allow
     "bash skills/opencode-permission-optimizer/scripts/list-agents.sh*": allow
-    "bash skills/opencode-permission-optimizer/scripts/summarize.sh --agent *": allow
+    "bash skills/opencode-permission-optimizer/scripts/agent-permission-report.sh --agent *": allow
     "rm -- .temp/permission-inspect-output-*": allow
     "rm -- .temp/permission-optimizer-output-*": allow
     "git diff *": allow

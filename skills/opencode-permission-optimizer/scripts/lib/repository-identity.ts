@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { toAbsolutePath } from "./absolute-path"
 import type { AbsolutePath } from "./absolute-path"
+import { readFailureDetail } from "./error-detail"
 
 /**
  * Sanitized repository identity resolution. Git metadata is resolved through
@@ -141,11 +142,6 @@ function buildIdentity(host: string, path: string): string | null {
 
 function readTrimmedOutput(output: unknown): string {
   return typeof output === "string" ? output.trim() : String(output).trim()
-}
-
-function readFailureDetail(err: unknown): string {
-  const failure = (typeof err === "object" && err !== null ? err : {}) as { stderr?: unknown; message?: unknown }
-  return readTrimmedOutput(failure.stderr ?? failure.message)
 }
 
 function gitOutputOrNull(args: string[], cwd: AbsolutePath): string | null {

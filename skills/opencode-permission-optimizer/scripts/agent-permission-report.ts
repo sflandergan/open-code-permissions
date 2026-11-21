@@ -12,6 +12,8 @@ import {
 } from "./lib/read-observations"
 import type { ObservationDatabaseState } from "./lib/read-observations"
 import { toAbsolutePath } from "./lib/absolute-path"
+import type { AbsolutePath } from "./lib/absolute-path"
+import { readFailureDetail } from "./lib/error-detail"
 import {
   formatRepositoryIdentity,
   resolveRepositoryIdentityForWorktree,
@@ -19,32 +21,38 @@ import {
 } from "./lib/repository-identity"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const USAGE = `usage: summarize.ts --agent <agent> [--days <n>]`
+const USAGE = `usage: agent-permission-report.ts --agent <agent> [--days <n>]`
 const HELP = `${USAGE}
 
-Export one agent's evidence summary as a single JSON document.
-The public wrapper (summarize.sh) writes the JSON to an ignored .temp/ file
+Export one agent's permission evidence as a single JSON document.
+The public wrapper (agent-permission-report.sh) writes the JSON to an ignored .temp/ file
 and prints only "output file: <path>" on stdout; run through the wrapper,
 never direct, so exact command history stays out of the terminal.
 
 options:
-  --agent <agent>  agent name to summarize (required)
+  --agent <agent>  agent name to report on (required)
   --days <n>       retained window in days, capped at ${RETENTION_DAYS} (default: ${RETENTION_DAYS})
   -h, --help       show this help and exit`
+const isMain =
+  process.argv[1] !== undefined &&
+  existsSync(process.argv[1]) &&
+  fileURLToPath(import.meta.url) === realpathSync(process.argv[1])
 
 type InspectorRequest = { form: "list-agents" } | { form: "show-effective"; agent: string }
 
 type InspectorInvoker = (args: InspectorRequest) => unknown
 
 /**
- * Inputs for one evidence summary export. `now` and `env` are injected so the
- * summary is reproducible in tests; a missing `databasePath` falls back to the
- * environment override or the platform data directory. `invokeInspector`
- * returns untrusted inspector JSON and defaults to the wrapper delegation.
+ * Inputs for one agent permission report. `now` and `env` are injected so the
+ * report is reproducible in tests; `workingDirectory` is the absolute Git
+ * worktree directory used to resolve repository identity. A missing
+ * `databasePath` falls back to the environment override or the platform data
+ * directory. `invokeInspector` returns untrusted inspector JSON and defaults to
+ * the wrapper delegation.
  */
-export interface SummaryInput {
+export interface AgentPermissionReportRequest {
   agent: string
-  cwd: string
+  workingDirectory: AbsolutePath
   now: Date
   days?: number | null
   env?: Record<string, string | undefined>
@@ -52,13 +60,13 @@ export interface SummaryInput {
   invokeInspector?: InspectorInvoker
 }
 
-interface SummaryBase {
+interface ReportBase {
   base: Record<string, unknown>
   repository: { identity: string | null; worktree: string }
   retainedInterval: { from: string; to: string }
 }
 
-type SummaryBaseInput = Pick<SummaryInput, "agent" | "cwd" | "now" | "days">
+type ReportBaseRequest = Pick<AgentPermissionReportRequest, "agent" | "workingDirectory" | "now" | "days">
 
 interface InspectorAgent {
   name: string
@@ -67,13 +75,13 @@ interface InspectorAgent {
   rules: unknown
 }
 
-interface DatabaseSummaryContext extends SummaryBase {
+interface DatabaseReportContext extends ReportBase {
   opened: ObservationDatabaseState
   agent: string
   invokeInspector: InspectorInvoker
 }
 
-interface AvailableDatabaseContext extends SummaryBase {
+interface AvailableDatabaseReportContext extends ReportBase {
   opened: Extract<ObservationDatabaseState, { state: "available" }>
   agent: string
   invokeInspector: InspectorInvoker
@@ -119,27 +127,28 @@ export function parseArgs(argv: string[]): { agent: string; days: number | null 
 }
 
 /**
- * Build the complete evidence summary for one agent. The database opens
- * read-only; a missing database yields a valid empty summary. An incompatible
- * schema throws `incompatible schema: expected <n>, found <n>` naming both
- * versions. The inspector runs twice (list-agents, show-effective) unless the
- * database is missing; any inspector failure stops the summary because policy
- * coverage is unknown. An available database is closed in a `finally`.
+ * Build the complete permission evidence report for one agent. The database
+ * opens read-only; a missing database yields a valid empty report. An
+ * incompatible schema throws `incompatible schema: expected <n>, found <n>`
+ * naming both versions. The inspector runs twice (list-agents, show-effective)
+ * unless the database is missing; any inspector failure stops the report
+ * because policy coverage is unknown. An available database is closed in a
+ * `finally`.
  */
-export function runSummary(input: SummaryInput): Record<string, unknown> {
+export function buildAgentPermissionReport(input: AgentPermissionReportRequest): Record<string, unknown> {
   const {
-    agent, cwd, now, days, env = {}, databasePath,
+    agent, workingDirectory, now, days, env = {}, databasePath,
     invokeInspector = defaultInvokeInspector,
   } = input
-  const summaryBase = buildSummaryBase({ agent, cwd, now, days })
+  const reportBase = buildReportBase({ agent, workingDirectory, now, days })
   const opened = openObservationDatabase(
     databasePath === undefined ? resolveDatabasePath(env) : toAbsolutePath(databasePath, "database path"),
   )
-  return buildDatabaseSummary({ opened, agent, invokeInspector, ...summaryBase })
+  return buildDatabaseReport({ opened, agent, invokeInspector, ...reportBase })
 }
 
-function buildSummaryBase({ agent, cwd, now, days }: SummaryBaseInput): SummaryBase {
-  const worktreeRoot = resolveWorktreeRoot(toAbsolutePath(cwd, "cwd"))
+function buildReportBase({ agent, workingDirectory, now, days }: ReportBaseRequest): ReportBase {
+  const worktreeRoot = resolveWorktreeRoot(workingDirectory)
   const resolvedRepository = resolveRepositoryIdentityForWorktree(worktreeRoot)
   const repository = {
     identity: formatRepositoryIdentity(resolvedRepository.identity),
@@ -161,19 +170,19 @@ function buildSummaryBase({ agent, cwd, now, days }: SummaryBaseInput): SummaryB
   return { base, repository, retainedInterval }
 }
 
-function buildDatabaseSummary({ opened, ...context }: DatabaseSummaryContext): Record<string, unknown> {
+function buildDatabaseReport({ opened, ...context }: DatabaseReportContext): Record<string, unknown> {
   if (opened.state === "missing") {
-    return buildMissingDatabaseSummary(context.base)
+    return buildMissingDatabaseReport(context.base)
   }
   if (opened.state === "incompatible") {
     throw new Error(
       `incompatible schema: expected ${opened.schemaVersion}, found ${opened.foundSchemaVersion ?? "unknown"}`,
     )
   }
-  return buildAvailableDatabaseSummary({ ...context, opened })
+  return buildAvailableDatabaseReport({ ...context, opened })
 }
 
-function buildMissingDatabaseSummary(base: Record<string, unknown>): Record<string, unknown> {
+function buildMissingDatabaseReport(base: Record<string, unknown>): Record<string, unknown> {
   return {
     ...base,
     databaseState: "missing",
@@ -184,9 +193,9 @@ function buildMissingDatabaseSummary(base: Record<string, unknown>): Record<stri
   }
 }
 
-function buildAvailableDatabaseSummary({
+function buildAvailableDatabaseReport({
   opened, base, repository, retainedInterval, agent, invokeInspector,
-}: AvailableDatabaseContext): Record<string, unknown> {
+}: AvailableDatabaseReportContext): Record<string, unknown> {
   try {
     const decisionHistory = readPermissionDecisionHistory(opened.db, {
       repositoryIdentity: repository.identity,
@@ -247,7 +256,12 @@ function defaultInvokeInspector(args: InspectorRequest): unknown {
     dirname(fileURLToPath(import.meta.url)),
     "..", "..", "opencode-permissions", "scripts", "inspect.sh",
   )
-  const worktreeRoot = resolveWorktreeRoot(toAbsolutePath(process.cwd(), "cwd"))
+  if (!existsSync(inspectorScriptPath)) {
+    throw new Error(
+      `opencode-permission-optimizer requires the opencode-permissions skill installed beside it (expected ${inspectorScriptPath})`,
+    )
+  }
+  const worktreeRoot = resolveWorktreeRoot(toAbsolutePath(process.cwd(), "working directory"))
   const outputPath = allocateInspectorOutputPath(worktreeRoot)
   try {
     const cliArgs = args.form === "list-agents"
@@ -297,19 +311,10 @@ function isMissingFileError(err: unknown): boolean {
   return isRecord(err) && err.code === "ENOENT"
 }
 
-function readFailureDetail(err: unknown): string {
-  const detail = isRecord(err) ? (err.stderr ?? err.message) : err
-  return String(detail).trim()
-}
-
 function readErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-const isMain =
-  process.argv[1] !== undefined &&
-  existsSync(process.argv[1]) &&
-  fileURLToPath(import.meta.url) === realpathSync(process.argv[1])
 if (isMain) {
   const argv = process.argv.slice(2)
   if (isHelpRequest(argv)) {
@@ -317,8 +322,14 @@ if (isMain) {
   } else {
     try {
       const args = parseArgs(argv)
-      const summary = runSummary({ agent: args.agent, days: args.days, cwd: process.cwd(), now: new Date(), env: process.env })
-      process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
+      const report = buildAgentPermissionReport({
+        agent: args.agent,
+        days: args.days,
+        workingDirectory: toAbsolutePath(process.cwd(), "working directory"),
+        now: new Date(),
+        env: process.env,
+      })
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
     } catch (err) {
       process.stderr.write(`error: ${readErrorMessage(err)}\n`)
       process.exitCode = 1

@@ -9,7 +9,7 @@ import {
   openObservationDatabase,
   readPermissionDecisionHistory,
 } from "../skills/opencode-permission-optimizer/scripts/lib/read-observations"
-import { runSummary } from "../skills/opencode-permission-optimizer/scripts/summarize"
+import { buildAgentPermissionReport } from "../skills/opencode-permission-optimizer/scripts/agent-permission-report"
 
 const IDENTITY = "github.com/example/portfolio-app"
 const WORKTREE = "/worktrees/portfolio-app"
@@ -104,9 +104,9 @@ describe("observation schema contract", () => {
     expect(opened).toEqual({ state: "incompatible", schemaVersion: 4, foundSchemaVersion: 999 })
 
     expect(() =>
-      runSummary({
+      buildAgentPermissionReport({
         agent: "build",
-        cwd: join(import.meta.dirname, ".."),
+        workingDirectory: toAbsolutePath(join(import.meta.dirname, ".."), "working directory"),
         now: new Date("2026-06-01T10:00:00.000Z"),
         databasePath: dbPath,
         invokeInspector: () => ({ agents: [] }),

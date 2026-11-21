@@ -356,14 +356,14 @@ function expectOptimizerSkillOrigins(byPosition: Record<number, EffectiveRule>):
 }
 
 /**
- * Assert the summary exporter entry point and that no other optimizer script
- * command or tool permission is allowed.
+ * Assert the agent permission report entry point and that no other optimizer
+ * script command or tool permission is allowed.
  */
 function expectOptimizerCommandSurface(
   report: EffectivePolicyReport,
   byPosition: Record<number, EffectiveRule>,
 ): void {
-  const entryPoints = ['bash "*/opencode-permission-optimizer/scripts/summarize.sh" --agent *']
+  const entryPoints = ['bash "*/opencode-permission-optimizer/scripts/agent-permission-report.sh" --agent *']
   for (let i = 0; i < entryPoints.length; i++) {
     expect(byPosition[32 + i]).toEqual({
       permission: "bash",

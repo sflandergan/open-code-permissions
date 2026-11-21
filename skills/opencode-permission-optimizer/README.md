@@ -25,7 +25,7 @@ bash "scripts/list-agents.sh"
 Export one agent's evidence summary:
 
 ```bash
-bash "scripts/summarize.sh" --agent "<agent>" [--days <n>]
+bash "scripts/agent-permission-report.sh" --agent "<agent>" [--days <n>]
 ```
 
 `--days` is capped at the 30-day retention window.

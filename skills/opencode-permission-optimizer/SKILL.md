@@ -20,7 +20,7 @@ bash "scripts/list-agents.sh"
 Export one agent's evidence summary:
 
 ```bash
-bash "scripts/summarize.sh" --agent "<agent>" [--days <n>]
+bash "scripts/agent-permission-report.sh" --agent "<agent>" [--days <n>]
 ```
 
 `--days` is capped at the 30-day retention window.
@@ -41,7 +41,7 @@ Read `docs/agents/opencode-permission-optimizer.md` when present for which polic
 ## Workflow
 
 1. Run `list-agents.sh`, read its output file, and ask the owner to select exactly one agent by its exact returned name; do not infer or broaden the name.
-2. Run `summarize.sh` for that agent, read the complete summary, and read the role guidance for the selected agent (`references/native-roles.md` for a native agent, the agent's own definition and referenced skills for a custom agent).
+2. Run `agent-permission-report.sh` for that agent, read the complete summary, and read the role guidance for the selected agent (`references/native-roles.md` for a native agent, the agent's own definition and referenced skills for a custom agent).
 3. Treat exact inputs, counts, timestamps, sessions, and worktrees as evidence, not conclusions.
 4. Group inputs by semantic operation, not by executable or by each argument and file path; generalize repeated forms of one understood operation.
 5. Assign every operation all applicable authority classifications.

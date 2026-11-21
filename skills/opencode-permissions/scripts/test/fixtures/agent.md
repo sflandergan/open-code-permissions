@@ -23,7 +23,7 @@ permission:
     "*": deny
     "*>*": deny
     "*<*": deny
-    "bash \"*/opencode-permission-optimizer/scripts/summarize.sh\" --agent *": allow
+    "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *": allow
     "ls": allow
     "echo *": allow
 ---
