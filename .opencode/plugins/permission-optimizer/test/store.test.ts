@@ -5,10 +5,12 @@ import type { ObservationRecord, CompletionEvent } from "../model"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { toAbsolutePath, type AbsolutePath } from "../absolute-path"
 
 const VALID_UTC = "2026-08-05T10:00:00.000Z"
 const VALID_UTC_2 = "2026-08-05T11:00:00.000Z"
 const VALID_UTC_3 = "2026-08-05T12:00:00.000Z"
+const WORKTREE = toAbsolutePath("/home/user/project", "worktree")
 
 function makeAskedRecord(overrides: Partial<ObservationRecord> = {}): ObservationRecord {
   return {
@@ -19,7 +21,7 @@ function makeAskedRecord(overrides: Partial<ObservationRecord> = {}): Observatio
     permission: "bash",
     patterns: ["git status"],
     repositoryIdentity: "github.com/user/repo",
-    worktree: "/home/user/project",
+    worktree: WORKTREE,
     agent: "implement",
     askedAt: VALID_UTC,
     ...overrides,
@@ -108,11 +110,11 @@ function seedRetentionLifecycles(store: ObservationStore): void {
 
 describe("createObservationStore", () => {
   let tmpDir: string
-  let dbPath: string
+  let dbPath: AbsolutePath
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "perm-opt-"))
-    dbPath = join(tmpDir, "obs.sqlite")
+    dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
   })
 
   afterEach(() => {
@@ -334,11 +336,11 @@ describe("createObservationStore", () => {
 
 describe("transactional upsert", () => {
   let tmpDir: string
-  let dbPath: string
+  let dbPath: AbsolutePath
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "perm-opt-"))
-    dbPath = join(tmpDir, "obs.sqlite")
+    dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
   })
 
   afterEach(() => {
@@ -375,11 +377,11 @@ describe("transactional upsert", () => {
 
 describe("stable facts", () => {
   let tmpDir: string
-  let dbPath: string
+  let dbPath: AbsolutePath
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "perm-opt-"))
-    dbPath = join(tmpDir, "obs.sqlite")
+    dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
   })
 
   afterEach(() => {
@@ -456,11 +458,11 @@ describe("stable facts", () => {
 
 describe("automatic retention", () => {
   let tmpDir: string
-  let dbPath: string
+  let dbPath: AbsolutePath
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "perm-opt-"))
-    dbPath = join(tmpDir, "obs.sqlite")
+    dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
   })
 
   afterEach(() => {
@@ -506,11 +508,11 @@ describe("automatic retention", () => {
 
 describe("concurrent writers", () => {
   let tmpDir: string
-  let dbPath: string
+  let dbPath: AbsolutePath
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "perm-opt-"))
-    dbPath = join(tmpDir, "obs.sqlite")
+    dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
   })
 
   afterEach(() => {

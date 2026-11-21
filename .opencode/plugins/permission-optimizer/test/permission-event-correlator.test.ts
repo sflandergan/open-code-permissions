@@ -1,16 +1,18 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { createPermissionEventCorrelator, type IdentityResolver, type WarningSink } from "../permission-event-correlator"
-import { createObservationStore } from "../store"
+import { createObservationStore, type ObservationStore } from "../store"
 import type { AgentResolver } from "../runtime-context"
 import type { PermissionEvent, CompletionEvent } from "../model"
 import { execFileSync } from "node:child_process"
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { toAbsolutePath, type AbsolutePath } from "../absolute-path"
 
 const VALID_UTC = "2026-08-05T10:00:00.000Z"
 const VALID_UTC_2 = "2026-08-05T11:00:00.000Z"
 const VALID_UTC_3 = "2026-08-05T12:00:00.000Z"
+const WORKTREE = toAbsolutePath("/project", "worktree")
 
 function makeAskedEvent(overrides: Partial<Extract<PermissionEvent, { kind: "asked" }>> = {}) {
   return {
@@ -55,18 +57,17 @@ const mockAgentResolver: AgentResolver = {
 }
 
 const mockIdentityResolver: IdentityResolver = () => ({
-  identity: "github.com/user/repo",
-  worktree: "/project",
-  commonDirectory: null,
+  source: "origin",
+  remote: "github.com/user/repo",
 })
 
 describe("createPermissionEventCorrelator", () => {
   let tmpDir: string
-  let dbPath: string
+  let dbPath: AbsolutePath
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "permission-event-correlator-"))
-    dbPath = join(tmpDir, "obs.sqlite")
+    dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
   })
 
   afterEach(() => {
@@ -75,7 +76,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("counts a once approval followed by a successful completion as a qualifying approval", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent({ reply: "once" }))
@@ -98,7 +99,11 @@ describe("createPermissionEventCorrelator", () => {
     execFileSync("git", ["remote", "add", "origin", "git@github.com:example/repo.git"], { cwd: repoDirectory })
 
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, repoDirectory)
+    const correlator = createPermissionEventCorrelator(
+      store,
+      mockAgentResolver,
+      toAbsolutePath(repoDirectory, "worktree"),
+    )
 
     await correlator.handleEvent(makeAskedEvent())
 
@@ -112,9 +117,38 @@ describe("createPermissionEventCorrelator", () => {
     store.close()
   })
 
+  test("persists the absolute Git common directory when the worktree has no origin", async () => {
+    const repoDirectory = join(tmpDir, "repo-fallback")
+    mkdirSync(repoDirectory)
+    execFileSync("git", ["init", "-q"], { cwd: repoDirectory })
+    const commonDirectory = execFileSync(
+      "git",
+      ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { cwd: repoDirectory, encoding: "utf-8" },
+    ).trimEnd()
+
+    const store = createObservationStore(dbPath)
+    const correlator = createPermissionEventCorrelator(
+      store,
+      mockAgentResolver,
+      toAbsolutePath(repoDirectory, "worktree"),
+    )
+
+    await correlator.handleEvent(makeAskedEvent())
+
+    const db = (await import("bun:sqlite")).Database
+    const conn = new db(dbPath)
+    const observation = conn.query("SELECT repository_identity FROM observations WHERE request_id = 'req_001'").get() as {
+      repository_identity: string | null
+    }
+    expect(observation.repository_identity).toBe(commonDirectory)
+    conn.close()
+    store.close()
+  })
+
   test("counts an always approval followed by a successful completion as a qualifying approval", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent({ reply: "always" }))
@@ -131,7 +165,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("counts no qualifying approval for a rejected request", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent({ reply: "reject" }))
@@ -147,7 +181,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("records an automatic always reply for an unobserved request as always-derived", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     // The asked event was never observed, so seed the observation directly.
     store.upsertAsked({
@@ -158,7 +192,7 @@ describe("createPermissionEventCorrelator", () => {
       permission: "bash",
       patterns: ["git log"],
       repositoryIdentity: null,
-      worktree: "/project",
+      worktree: WORKTREE,
       agent: null,
       askedAt: VALID_UTC,
     })
@@ -175,7 +209,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("records an automatic rejection for an unobserved request as rejection-derived", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     store.upsertAsked({
       requestId: "req_cascade_rej",
@@ -185,7 +219,7 @@ describe("createPermissionEventCorrelator", () => {
       permission: "bash",
       patterns: ["git log"],
       repositoryIdentity: null,
-      worktree: "/project",
+      worktree: WORKTREE,
       agent: null,
       askedAt: VALID_UTC,
     })
@@ -202,7 +236,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("marks a bash completion with exit code zero as success", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent())
@@ -219,7 +253,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("marks a bash completion with a nonzero exit code as failure", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent())
@@ -237,7 +271,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("records a non-bash tool completion as success with no exit code", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent({ permission: "edit" }))
     await correlator.handleEvent(makeRepliedEvent())
@@ -255,7 +289,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("leaves the observation uncompleted when the session or call does not match", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleCompletion(makeCompletion({ sessionId: "other_session", callId: "other_call" }))
@@ -271,7 +305,7 @@ describe("createPermissionEventCorrelator", () => {
   test("records a null agent and no qualifying approval when the observation origin is missing", async () => {
     const failingResolver: AgentResolver = { async resolve() { return null } }
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, failingResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, failingResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent())
@@ -288,7 +322,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("preserves the first-seen asked time on duplicate delivery", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeAskedEvent({ receivedAt: VALID_UTC_2 }))
@@ -303,7 +337,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("records multiple patterns as one observation with ordered inputs", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent({ patterns: ["git status", "git diff"] }))
 
@@ -321,7 +355,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("records a sibling's automatic always reply as always-derived after a human always approval", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
@@ -351,7 +385,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("records only sibling requests covered by a human always approval as always-derived", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
@@ -389,7 +423,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("records an automatic rejection as rejection-derived after a human rejection", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
@@ -419,7 +453,7 @@ describe("createPermissionEventCorrelator", () => {
   // OpenCode answers requests covered by an earlier always reply itself; any other reply on such a request is unexpected and is recorded as unresolved rather than counted as a decision.
   test("records an unexpected reply to a request covered by an earlier always reply as unresolved", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent({
       requestId: "req_A",
@@ -446,7 +480,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("applies a reply that arrives before the asked event", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeRepliedEvent({ reply: "always" }))
     await correlator.handleEvent(makeAskedEvent())
@@ -461,7 +495,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("applies a completion that arrives before the asked event", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleCompletion(makeCompletion())
     await correlator.handleEvent(makeAskedEvent())
@@ -478,7 +512,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("preserves the first-known decision when replies conflict", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent({ reply: "once" }))
@@ -494,7 +528,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("preserves the first-known completion when completions conflict", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     await correlator.handleEvent(makeRepliedEvent())
@@ -515,7 +549,7 @@ describe("createPermissionEventCorrelator", () => {
     const sink: WarningSink = (msg) => warnings.push(msg)
     const store = createObservationStore(dbPath)
     store.close()
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver, sink)
 
     await correlator.handleEvent(makeAskedEvent())
 
@@ -533,7 +567,7 @@ describe("createPermissionEventCorrelator", () => {
     const sink: WarningSink = (msg) => warnings.push(msg)
     const store = createObservationStore(dbPath)
     store.close()
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver, sink)
 
     await correlator.handleCompletion(makeCompletion())
 
@@ -547,7 +581,7 @@ describe("createPermissionEventCorrelator", () => {
     const warnings: string[] = []
     const sink: WarningSink = (msg) => warnings.push(msg)
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver, sink)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver, sink)
 
     // The adapter rejects these events, so they never reach the correlator.
     expect(warnings).toHaveLength(0)
@@ -556,7 +590,7 @@ describe("createPermissionEventCorrelator", () => {
 
   test("processes concurrent events one at a time without interleaving", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     const promises: Promise<void>[] = []
     for (let i = 0; i < 10; i++) {
@@ -578,12 +612,12 @@ describe("createPermissionEventCorrelator", () => {
 
   test("preserves a known agent when a duplicate asked event resolves none", async () => {
     const store = createObservationStore(dbPath)
-    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, "/project", mockIdentityResolver)
+    const correlator = createPermissionEventCorrelator(store, mockAgentResolver, WORKTREE, mockIdentityResolver)
 
     await correlator.handleEvent(makeAskedEvent())
     // A later asked event that resolves no agent must not erase the known one.
     const failingResolver: AgentResolver = { async resolve() { return null } }
-    const correlator2 = createPermissionEventCorrelator(store, failingResolver, "/project", mockIdentityResolver)
+    const correlator2 = createPermissionEventCorrelator(store, failingResolver, WORKTREE, mockIdentityResolver)
 
     await correlator2.handleEvent(makeAskedEvent({ receivedAt: VALID_UTC_2 }))
 
@@ -591,6 +625,68 @@ describe("createPermissionEventCorrelator", () => {
     const conn = new db(dbPath)
     const obs = conn.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
     expect(obs.agent).toBe("implement")
+    conn.close()
+    store.close()
+  })
+
+  test("reports the underlying failure message when a storage operation fails", async () => {
+    const warnings: string[] = []
+    const failingStore: ObservationStore = {
+      upsertAsked() {
+        throw new Error("write refused")
+      },
+      fillObservationOrigin() {},
+      updateDecision() {
+        return 0
+      },
+      updateCompletion() {
+        return 0
+      },
+      prune() {
+        return 0
+      },
+      close() {},
+    }
+    const correlator = createPermissionEventCorrelator(
+      failingStore,
+      mockAgentResolver,
+      WORKTREE,
+      mockIdentityResolver,
+      (message) => warnings.push(message),
+    )
+
+    await correlator.handleEvent(makeAskedEvent())
+
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain("handleEvent")
+    expect(warnings[0]).toContain("write refused")
+  })
+
+  test("reports a failed agent lookup and records the observation without an agent", async () => {
+    const warnings: string[] = []
+    const throwingResolver: AgentResolver = {
+      async resolve() {
+        throw new Error("lookup refused")
+      },
+    }
+    const store = createObservationStore(dbPath)
+    const correlator = createPermissionEventCorrelator(
+      store,
+      throwingResolver,
+      WORKTREE,
+      mockIdentityResolver,
+      (message) => warnings.push(message),
+    )
+
+    await correlator.handleEvent(makeAskedEvent())
+
+    const db = (await import("bun:sqlite")).Database
+    const conn = new db(dbPath)
+    const obs = conn.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
+    expect(obs.agent).toBeNull()
+    expect(warnings).toEqual([
+      "permission-event-correlator: agent lookup failed for session sess_001: lookup refused",
+    ])
     conn.close()
     store.close()
   })

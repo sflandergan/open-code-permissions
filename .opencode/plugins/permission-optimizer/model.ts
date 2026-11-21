@@ -1,3 +1,5 @@
+import type { AbsolutePath } from "./absolute-path"
+
 /**
  * Injected clock producing receipt timestamps so observation timing is
  * deterministic in tests and controlled by the plugin at runtime. Timestamps
@@ -52,7 +54,7 @@ export type PermissionDecision = "once" | "always" | "reject" | "always-derived"
 /**
  * Complete asked-time facts handed to the store for one observation lifecycle.
  * `repositoryIdentity` and `agent` are resolved by the runtime context and may
- * be unknown at persistence time.
+ * be unknown at persistence time. `worktree` is the absolute working-tree path.
  */
 export type ObservationRecord = {
   requestId: string
@@ -62,7 +64,7 @@ export type ObservationRecord = {
   permission: string
   patterns: string[]
   repositoryIdentity: string | null
-  worktree: string
+  worktree: AbsolutePath
   agent: string | null
   askedAt: string
 }

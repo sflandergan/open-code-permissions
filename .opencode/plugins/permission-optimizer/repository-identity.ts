@@ -1,22 +1,28 @@
-/**
- * Sanitized `host/path` identity derived from the Git `origin` remote, or the
- * canonical Git common directory when no usable origin exists. `worktree` is
- * always the current working-tree path. `commonDirectory` is set only when a
- * Git-common-directory fallback was used for identity.
- */
-export type RepositoryIdentity = {
-  identity: string | null
-  worktree: string
-  commonDirectory: string | null
-}
+import type { AbsolutePath } from "./absolute-path"
 
 /**
- * Raw Git metadata returned by the subprocess resolvers before sanitization.
- * The raw remote is never persisted or logged.
+ * Where an observation's repository identity came from: the sanitized
+ * `host/path` of the `origin` remote, the absolute Git common directory, or
+ * unknown. The raw remote URL never appears here.
  */
-export type GitMetadata = {
-  origin: string | null
-  commonDirectory: string | null
+export type RepositoryIdentity =
+  | { source: "origin"; remote: string }
+  | { source: "git-common-directory"; directoryPath: AbsolutePath }
+  | { source: "unknown" }
+
+/**
+ * The string persisted in `observations.repository_identity`: the normalized
+ * origin `host/path`, else the absolute Git common directory, else `null`.
+ */
+export function formatRepositoryIdentity(identity: RepositoryIdentity): string | null {
+  switch (identity.source) {
+    case "origin":
+      return identity.remote
+    case "git-common-directory":
+      return identity.directoryPath
+    case "unknown":
+      return null
+  }
 }
 
 /**
@@ -50,21 +56,20 @@ function buildIdentity(host: string, path: string): string | null {
 }
 
 /**
- * Builds a `RepositoryIdentity` from sanitized Git metadata. When the origin
- * is available it becomes the identity; otherwise the Git common directory is
- * used as a fallback identity.
+ * Builds a `RepositoryIdentity` from the raw origin and the resolved Git
+ * common directory. A usable origin wins; otherwise the common directory is
+ * the fallback identity.
  */
 export function resolveRepositoryIdentity(
   origin: string | null,
-  commonDir: string | null,
+  commonDirectory: AbsolutePath | null,
 ): RepositoryIdentity {
   const sanitized = normalizeOrigin(origin)
   if (sanitized) {
-    return { identity: sanitized, worktree: "", commonDirectory: null }
+    return { source: "origin", remote: sanitized }
   }
-  return {
-    identity: commonDir ?? null,
-    worktree: "",
-    commonDirectory: commonDir ?? null,
+  if (commonDirectory !== null) {
+    return { source: "git-common-directory", directoryPath: commonDirectory }
   }
+  return { source: "unknown" }
 }

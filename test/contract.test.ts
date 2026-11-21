@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createObservationStore } from "../.opencode/plugins/permission-optimizer/store"
+import { toAbsolutePath } from "../.opencode/plugins/permission-optimizer/absolute-path"
 import {
   openObservationDatabase,
   readExactInputEvidence,
@@ -28,7 +29,7 @@ afterEach(() => {
 })
 
 function seedApprovedObservation(dbPath: string): void {
-  const store = createObservationStore(dbPath, CLOCK)
+  const store = createObservationStore(toAbsolutePath(dbPath, "database path"), CLOCK)
   store.upsertAsked({
     requestId: "req-1",
     sessionId: "session-1",
@@ -37,7 +38,7 @@ function seedApprovedObservation(dbPath: string): void {
     permission: "bash",
     patterns: ["git status"],
     repositoryIdentity: IDENTITY,
-    worktree: WORKTREE,
+    worktree: toAbsolutePath(WORKTREE, "worktree"),
     agent: "build",
     askedAt: ASKED_AT,
   })

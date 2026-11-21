@@ -1,4 +1,5 @@
 import { Database } from "bun:sqlite"
+import type { AbsolutePath } from "./absolute-path"
 import { openDatabase } from "./database"
 import { RETENTION_DAYS } from "./schema"
 import type { Clock, CompletionEvent, ObservationRecord, PermissionDecision } from "./model"
@@ -34,11 +35,11 @@ export type ObservationStore = {
 }
 
 /**
- * Creates an `ObservationStore` backed by the database at `dbPath`.
- * Opens or creates the database with the versioned schema. An optional clock
- * makes retention pruning deterministic in tests.
+ * Creates an `ObservationStore` backed by the database at the absolute path
+ * `dbPath`. Opens or creates the database with the versioned schema. An
+ * optional clock makes retention pruning deterministic in tests.
  */
-export function createObservationStore(dbPath: string, clock?: Clock): ObservationStore {
+export function createObservationStore(dbPath: AbsolutePath, clock?: Clock): ObservationStore {
   const db = openDatabase(dbPath)
   return new SqliteObservationStore(db, clock ?? { now: () => new Date() })
 }

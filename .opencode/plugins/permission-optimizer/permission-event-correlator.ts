@@ -6,7 +6,8 @@ import type {
 } from "./model"
 import type { ObservationStore } from "./store"
 import type { AgentResolver } from "./runtime-context"
-import type { RepositoryIdentity } from "./repository-identity"
+import type { AbsolutePath } from "./absolute-path"
+import { formatRepositoryIdentity, type RepositoryIdentity } from "./repository-identity"
 import { resolveRepositoryIdentityFromGit } from "./runtime-context"
 import {
   createPendingRequests,
@@ -42,22 +43,24 @@ export type WarningSink = (message: string) => void
 /**
  * Creates a permission event correlator that correlates permission
  * asked/replied events and tool completion hooks into idempotent observation
- * records. All event processing is serialized through a promise queue so
- * overlapping or reordered calls cannot interleave. Storage failures emit
- * sanitized recoverable warnings through `onWarning` and never block
- * permission decisions or tool execution.
+ * records. `worktree` is the absolute working-tree path persisted with each
+ * observation. All event processing is serialized through a promise queue so
+ * overlapping or reordered calls cannot interleave. Storage and lookup
+ * failures emit sanitized recoverable warnings through `onWarning` and never
+ * block permission decisions or tool execution.
  */
 export function createPermissionEventCorrelator(
   store: ObservationStore,
   agentResolver: AgentResolver,
-  worktree: string,
+  worktree: AbsolutePath,
   identityResolver?: IdentityResolver,
   onWarning?: WarningSink,
 ): PermissionEventCorrelator {
   const pending = createPendingRequests()
   const cascades = createCascadeTargets()
   const earlyFacts = createEarlyFactStore()
-  const resolveIdentity = identityResolver ?? (() => resolveRepositoryIdentityFromGit(worktree))
+  const warn = onWarning ?? (() => {})
+  const resolveIdentity = identityResolver ?? (() => resolveRepositoryIdentityFromGit(worktree, warn))
   return new SqlitePermissionEventCorrelator(
     store,
     agentResolver,
@@ -66,7 +69,7 @@ export function createPermissionEventCorrelator(
     cascades,
     earlyFacts,
     resolveIdentity,
-    onWarning ?? (() => {}),
+    warn,
   )
 }
 
@@ -126,7 +129,7 @@ function createSerialQueue(): {
 class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
   private readonly store: ObservationStore
   private readonly agentResolver: AgentResolver
-  private readonly worktree: string
+  private readonly worktree: AbsolutePath
   private readonly pending: PendingRequests
   private readonly cascades: CascadeTargets
   private readonly earlyFacts: Map<string, EarlyFact>
@@ -137,7 +140,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
   constructor(
     store: ObservationStore,
     agentResolver: AgentResolver,
-    worktree: string,
+    worktree: AbsolutePath,
     pending: PendingRequests,
     cascades: CascadeTargets,
     earlyFacts: Map<string, EarlyFact>,
@@ -164,7 +167,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
         }
       } catch (err) {
         this.onWarning(
-          `permission-event-correlator: operation=handleEvent kind=${event.kind} request=${event.requestId}`,
+          `permission-event-correlator: operation=handleEvent kind=${event.kind} request=${event.requestId}: ${errorMessage(err)}`,
         )
       }
     })
@@ -184,7 +187,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
         }
       } catch (err) {
         this.onWarning(
-          `permission-event-correlator: operation=handleCompletion session=${completion.sessionId} call=${completion.callId}`,
+          `permission-event-correlator: operation=handleCompletion session=${completion.sessionId} call=${completion.callId}: ${errorMessage(err)}`,
         )
       }
     })
@@ -193,7 +196,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
   private async handleAsked(
     event: Extract<PermissionEvent, { kind: "asked" }>,
   ): Promise<void> {
-    const identity = this.resolveIdentity()
+    const repositoryIdentity = formatRepositoryIdentity(this.resolveIdentity())
     const agent = await this.resolveAgent(event.sessionId, event.messageId)
 
     const isFirstSeen = !this.pending.has(event.requestId)
@@ -207,14 +210,14 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
         callId: event.callId,
         permission: event.permission,
         patterns: event.patterns,
-        repositoryIdentity: identity.identity,
+        repositoryIdentity,
         worktree: this.worktree,
         agent,
         askedAt: event.receivedAt,
       }
       this.store.upsertAsked(record)
     } else {
-      this.fillObservationOrigin(event, identity.identity, agent)
+      this.fillObservationOrigin(event, repositoryIdentity, agent)
     }
 
     this.applyEarlyReplied(event.requestId)
@@ -239,7 +242,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
       })
     } catch (err) {
       this.onWarning(
-        `permission-event-correlator: operation=fillObservationOrigin request=${event.requestId}`,
+        `permission-event-correlator: operation=fillObservationOrigin request=${event.requestId}: ${errorMessage(err)}`,
       )
     }
   }
@@ -274,7 +277,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
         )
       } catch (err) {
         this.onWarning(
-          `permission-event-correlator: operation=applyEarlyCompletion session=${early.completion.sessionId} call=${early.completion.callId}`,
+          `permission-event-correlator: operation=applyEarlyCompletion session=${early.completion.sessionId} call=${early.completion.callId}: ${errorMessage(err)}`,
         )
       }
     }
@@ -301,7 +304,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
       }
     } catch (err) {
       this.onWarning(
-        `permission-event-correlator: operation=updateDecision request=${event.requestId}`,
+        `permission-event-correlator: operation=updateDecision request=${event.requestId}: ${errorMessage(err)}`,
       )
     }
   }
@@ -333,7 +336,7 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
       this.store.updateDecision(event.requestId, decision, event.receivedAt)
     } catch (err) {
       this.onWarning(
-        `permission-event-correlator: operation=updateDecision request=${event.requestId}`,
+        `permission-event-correlator: operation=updateDecision request=${event.requestId}: ${errorMessage(err)}`,
       )
     }
   }
@@ -344,10 +347,17 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
   ): Promise<string | null> {
     try {
       return await this.agentResolver.resolve({ sessionId, messageId })
-    } catch {
+    } catch (err) {
+      this.onWarning(
+        `permission-event-correlator: agent lookup failed for session ${sessionId}: ${errorMessage(err)}`,
+      )
       return null
     }
   }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }
 
 /**

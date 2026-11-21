@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { toAbsolutePath } from "../absolute-path"
 import { openDatabase } from "../database"
 import { SCHEMA_VERSION } from "../schema"
 
@@ -39,7 +40,7 @@ describe("openDatabase", () => {
   test.skipIf(process.platform === "win32")(
     "creates a new database file readable and writable only by its owner",
     () => {
-      const dbPath = join(tmpDir, "obs.sqlite")
+      const dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
       const db = openDatabase(dbPath)
       expect(statSync(dbPath).mode & 0o777).toBe(0o600)
       db.close()
@@ -47,7 +48,7 @@ describe("openDatabase", () => {
   )
 
   test("opens a database with write-ahead logging and foreign keys enabled", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
+    const dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
     const db = openDatabase(dbPath)
     const journalMode = db.query("PRAGMA journal_mode").get() as Record<string, unknown>
     expect(journalMode.journal_mode).toBe("wal")
@@ -57,7 +58,7 @@ describe("openDatabase", () => {
   })
 
   test("initializes the schema version metadata to the current schema version", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
+    const dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
     const db = openDatabase(dbPath)
     const row = db.query("SELECT * FROM schema_metadata WHERE id = 1").get() as Record<string, unknown>
     expect(row.version).toBe(SCHEMA_VERSION)
@@ -67,7 +68,7 @@ describe("openDatabase", () => {
   test("restricts a permissive database directory and file to owner-only modes", () => {
     const leaf = join(tmpDir, "app-data", "permission-optimizer")
     mkdirSync(leaf, { recursive: true, mode: 0o755 })
-    const dbPath = join(leaf, "obs.sqlite")
+    const dbPath = toAbsolutePath(join(leaf, "obs.sqlite"), "database path")
     const db = openDatabase(dbPath)
     expect(statSync(leaf).mode & 0o777).toBe(0o700)
     expect(statSync(dbPath).mode & 0o777).toBe(0o600)
@@ -75,7 +76,7 @@ describe("openDatabase", () => {
   })
 
   test("restricts the database and its sidecar files to owner-only modes", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
+    const dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
     const db = openDatabase(dbPath)
     db.run(
       "INSERT INTO observations (request_id, session_id, worktree, permission, asked_at) VALUES ('w1', 's1', '/w', 'bash', '2026-08-05T10:00:00.000Z')",
@@ -91,7 +92,7 @@ describe("openDatabase", () => {
   })
 
   test("leaves an incompatible database unchanged when opening is refused", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
+    const dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
     const db = openDatabase(dbPath)
     db.run("UPDATE schema_metadata SET version = 99 WHERE id = 1")
     db.close()
@@ -109,7 +110,7 @@ describe("openDatabase", () => {
   })
 
   test("rejects an existing database that lacks the schema version metadata table", () => {
-    const dbPath = join(tmpDir, "obs.sqlite")
+    const dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
     const alien = new Database(dbPath, { create: true })
     alien.exec("CREATE TABLE alien_data (x TEXT)")
     alien.exec("INSERT INTO alien_data VALUES ('keep me')")

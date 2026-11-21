@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeOrigin, resolveRepositoryIdentity } from "../repository-identity"
+import { toAbsolutePath } from "../absolute-path"
+import {
+  formatRepositoryIdentity,
+  normalizeOrigin,
+  resolveRepositoryIdentity,
+} from "../repository-identity"
 
 describe("normalizeOrigin", () => {
   test("reduces an SSH origin to host and path", () => {
@@ -44,15 +49,42 @@ describe("normalizeOrigin", () => {
 })
 
 describe("resolveRepositoryIdentity", () => {
-  test("falls back to the common directory when the origin is missing", () => {
-    const result = resolveRepositoryIdentity(null, "/repo/.git")
-    expect(result.identity).toBe("/repo/.git")
-    expect(result.commonDirectory).toBe("/repo/.git")
+  test("uses the sanitized origin instead of the common directory", () => {
+    const identity = resolveRepositoryIdentity(
+      "git@github.com:user/repo.git",
+      toAbsolutePath("/repo/.git", "Git common directory"),
+    )
+    expect(identity).toEqual({ source: "origin", remote: "github.com/user/repo" })
   })
 
-  test("uses the sanitized origin instead of the common directory", () => {
-    const result = resolveRepositoryIdentity("git@github.com:user/repo.git", null)
-    expect(result.identity).toBe("github.com/user/repo")
-    expect(result.commonDirectory).toBeNull()
+  test("falls back to the common directory when the origin is missing", () => {
+    const directoryPath = toAbsolutePath("/repo/.git", "Git common directory")
+    expect(resolveRepositoryIdentity(null, directoryPath)).toEqual({
+      source: "git-common-directory",
+      directoryPath,
+    })
+  })
+
+  test("reports unknown when neither source is available", () => {
+    expect(resolveRepositoryIdentity(null, null)).toEqual({ source: "unknown" })
+  })
+})
+
+describe("formatRepositoryIdentity", () => {
+  test("persists the normalized origin as the repository identity", () => {
+    const identity = resolveRepositoryIdentity("git@github.com:user/repo.git", null)
+    expect(formatRepositoryIdentity(identity)).toBe("github.com/user/repo")
+  })
+
+  test("persists the Git common directory when no origin is usable", () => {
+    const identity = resolveRepositoryIdentity(
+      null,
+      toAbsolutePath("/repo/.git", "Git common directory"),
+    )
+    expect(formatRepositoryIdentity(identity)).toBe("/repo/.git")
+  })
+
+  test("persists no repository identity when neither is known", () => {
+    expect(formatRepositoryIdentity(resolveRepositoryIdentity(null, null))).toBeNull()
   })
 })

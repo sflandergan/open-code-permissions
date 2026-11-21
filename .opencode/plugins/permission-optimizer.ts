@@ -7,6 +7,7 @@ import { createObservationStore } from "./permission-optimizer/store"
 import { createPermissionEventCorrelator } from "./permission-optimizer/permission-event-correlator"
 import { createAgentResolver } from "./permission-optimizer/runtime-context"
 import { resolveDatabasePath } from "./permission-optimizer/database-path"
+import { toAbsolutePath } from "./permission-optimizer/absolute-path"
 
 /**
  * Project-local permission optimizer plugin. Subscribes to `permission.asked`,
@@ -15,13 +16,14 @@ import { resolveDatabasePath } from "./permission-optimizer/database-path"
  * database. No custom tools or commands are registered.
  *
  * A database that cannot be opened is reported and yields no hooks, so OpenCode
- * continues without recording. Hook failures are caught inside the permission
- * event correlator and surfaced as sanitized warnings rather than thrown to
- * the host.
+ * continues without recording. Hook bodies catch adapter and correlator
+ * failures and surface them as sanitized warnings rather than thrown to the
+ * host.
  */
 export const PermissionOptimizerPlugin: Plugin = async (
   input: PluginInput,
 ): Promise<Hooks> => {
+  const worktree = toAbsolutePath(input.worktree, "worktree")
   const store = openObservationStore()
   if (store === null) return {}
   const clock: Clock = { now: () => new Date() }
@@ -31,12 +33,12 @@ export const PermissionOptimizerPlugin: Plugin = async (
   const onUnsupportedSchema = createWarnOnce(emitWarning)
   const correlator = createPermissionEventCorrelator(
     store,
-    createAgentResolver(input.client),
-    input.worktree,
+    createAgentResolver(input.client, emitWarning),
+    worktree,
     undefined,
     emitWarning,
   )
-  return createHooks(store, correlator, clock, onUnsupportedSchema)
+  return createHooks(store, correlator, clock, onUnsupportedSchema, emitWarning)
 }
 
 /**
@@ -71,18 +73,27 @@ function createHooks(
   correlator: PermissionEventCorrelator,
   clock: Clock,
   onUnsupportedSchema: (type: string) => void,
+  warn: (message: string) => void,
 ): Hooks {
   return {
     async event({ event }) {
-      const adapted = adaptEvent(event, clock, onUnsupportedSchema)
-      if (!adapted) return
-      await correlator.handleEvent(adapted)
+      try {
+        const adapted = adaptEvent(event, clock, onUnsupportedSchema)
+        if (!adapted) return
+        await correlator.handleEvent(adapted)
+      } catch (err) {
+        warn(`event failed: ${errorMessage(err)}`)
+      }
     },
 
     async "tool.execute.after"(input, output): Promise<void> {
-      const adapted = adaptCompletion(input, output, clock)
-      if (!adapted) return
-      await correlator.handleCompletion(adapted)
+      try {
+        const adapted = adaptCompletion(input, output, clock)
+        if (!adapted) return
+        await correlator.handleCompletion(adapted)
+      } catch (err) {
+        warn(`tool.execute.after failed: ${errorMessage(err)}`)
+      }
     },
 
     async dispose() {
@@ -93,4 +104,8 @@ function createHooks(
       }
     },
   }
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
 }

@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
 import { chmodSync, existsSync, lstatSync, mkdirSync, statSync } from "node:fs"
 import { dirname } from "node:path"
+import type { AbsolutePath } from "./absolute-path"
 import { isMigratableVersion, readSchemaSql, SCHEMA_VERSION } from "./schema"
 import { assertCurrentSchemaShape, migrateToCurrentSchema } from "./schema-migration"
 
@@ -9,9 +10,9 @@ const DIRECTORY_MODE = 0o700
 const FILE_MODE = 0o600
 
 /**
- * Opens (or creates) the observation database at `dbPath` and returns it with
- * WAL mode, foreign keys, a bounded busy timeout, and owner-only filesystem
- * permissions.
+ * Opens (or creates) the observation database at the absolute path `dbPath`
+ * and returns it with WAL mode, foreign keys, a bounded busy timeout, and
+ * owner-only filesystem permissions.
  *
  * Compatibility-first: an existing non-empty database is inspected read-only
  * before any persistent PRAGMA, schema, prune, permission, or WAL mutation.
@@ -24,7 +25,7 @@ const FILE_MODE = 0o600
  * These modes protect observations from group/other OS accounts; they are not
  * a boundary between processes running as the same OS user.
  */
-export function openDatabase(dbPath: string): Database {
+export function openDatabase(dbPath: AbsolutePath): Database {
   protectLeafDirectory(dbPath)
 
   if (existsSync(dbPath) && statSync(dbPath).size > 0) {
@@ -35,7 +36,7 @@ export function openDatabase(dbPath: string): Database {
 
 type DatabaseState = { version: number | null }
 
-function openExistingDatabase(dbPath: string): Database {
+function openExistingDatabase(dbPath: AbsolutePath): Database {
   const inspector = new Database(dbPath, { readonly: true })
   inspector.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
   let state: DatabaseState
@@ -67,7 +68,7 @@ function openExistingDatabase(dbPath: string): Database {
   }
 }
 
-function createNewDatabase(dbPath: string): Database {
+function createNewDatabase(dbPath: AbsolutePath): Database {
   const db = new Database(dbPath, { create: true })
   try {
     setOwnerOnlyFileMode(dbPath)
@@ -129,7 +130,7 @@ function initializeNewSchema(db: Database): void {
   }
 }
 
-function protectLeafDirectory(dbPath: string): void {
+function protectLeafDirectory(dbPath: AbsolutePath): void {
   const parent = dirname(dbPath)
   mkdirSync(parent, { recursive: true, mode: DIRECTORY_MODE })
   const info = lstatSync(parent)
@@ -138,11 +139,11 @@ function protectLeafDirectory(dbPath: string): void {
   }
 }
 
-function setOwnerOnlyFileMode(dbPath: string): void {
+function setOwnerOnlyFileMode(dbPath: AbsolutePath): void {
   chmodSync(dbPath, FILE_MODE)
 }
 
-function protectSidecarFiles(dbPath: string): void {
+function protectSidecarFiles(dbPath: AbsolutePath): void {
   for (const sidecar of [dbPath + "-wal", dbPath + "-shm"]) {
     if (!existsSync(sidecar)) continue
     try {

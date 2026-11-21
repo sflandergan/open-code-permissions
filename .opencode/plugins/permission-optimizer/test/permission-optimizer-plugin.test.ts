@@ -110,6 +110,34 @@ describe("plugin entry", () => {
     }
   })
 
+  it("keeps OpenCode running when an event cannot be adapted", async () => {
+    const homeDir = join(tempDir, "home")
+    const overridePath = join(tempDir, "override", "observations.sqlite")
+    pinHome(homeDir)
+    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
+      const event = {
+        type: "permission.asked",
+        get properties(): Record<string, unknown> {
+          throw new Error("malformed properties")
+        },
+      }
+
+      await expect(hooks.event?.({ event })).resolves.toBeUndefined()
+
+      expect(warn).toHaveBeenCalledTimes(1)
+      const message = String(warn.mock.calls[0]?.[0])
+      expect(message).toContain("event failed")
+      expect(message).toContain("malformed properties")
+      await hooks.dispose?.()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it("records an observation in the overridden database when a permission is asked, answered, and completed", async () => {
     const homeDir = join(tempDir, "home")
     const overridePath = join(tempDir, "override", "observations.sqlite")

@@ -3,6 +3,7 @@ import { Database } from "bun:sqlite"
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { toAbsolutePath, type AbsolutePath } from "../absolute-path"
 import { openDatabase } from "../database"
 
 const VALID_UTC = "2026-08-05T10:00:00.000Z"
@@ -196,11 +197,11 @@ function expectWriteAheadFileUnchanged(dbPath: string, walBefore: string | null)
 
 describe("schema migrations", () => {
   let tmpDir: string
-  let dbPath: string
+  let dbPath: AbsolutePath
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "permission-optimizer-migration-"))
-    dbPath = join(tmpDir, "observations.sqlite")
+    dbPath = toAbsolutePath(join(tmpDir, "observations.sqlite"), "database path")
   })
 
   afterEach(() => {
