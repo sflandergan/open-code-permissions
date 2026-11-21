@@ -33,62 +33,64 @@ const MARKED = [
   "",
 ].join("\n")
 
+const WITH_METADATA = [
+  "---",
+  "name: foo",
+  "metadata:",
+  "  owner: team",
+  "description: y",
+  "---",
+  "",
+  "Body.",
+  "",
+].join("\n")
+
+const WITH_METADATA_MARKED = [
+  "---",
+  "name: foo",
+  "metadata:",
+  "  owner: team",
+  "  internal: true",
+  "description: y",
+  "---",
+  "",
+  "Body.",
+  "",
+].join("\n")
+
+const INTERNAL_FALSE = [
+  "---",
+  "name: bugfix",
+  "metadata:",
+  "  internal: false",
+  "---",
+  "",
+  "You are the agent.",
+  "",
+].join("\n")
+
+const INTERNAL_FALSE_MARKED = [
+  "---",
+  "name: bugfix",
+  "metadata:",
+  "  internal: true",
+  "---",
+  "",
+  "You are the agent.",
+  "",
+].join("\n")
+
 describe("internal skill marking", () => {
   it("adds internal metadata to a skill whose frontmatter has no metadata block", () => {
     expect(markSkillInternal(PLAIN)).toBe(MARKED)
   })
 
   it("adds internal metadata to a skill whose frontmatter already has a metadata block", () => {
-    const withMetadata = [
-      "---",
-      "name: foo",
-      "metadata:",
-      "  owner: team",
-      "description: y",
-      "---",
-      "",
-      "Body.",
-      "",
-    ].join("\n")
-    expect(markSkillInternal(withMetadata)).toBe(
-      [
-        "---",
-        "name: foo",
-        "metadata:",
-        "  owner: team",
-        "  internal: true",
-        "description: y",
-        "---",
-        "",
-        "Body.",
-        "",
-      ].join("\n"),
-    )
+    expect(markSkillInternal(WITH_METADATA)).toBe(WITH_METADATA_MARKED)
   })
 
   it("replaces an explicit internal false with internal true instead of adding a second key", () => {
-    const explicitlyNotInternal = [
-      "---",
-      "name: bugfix",
-      "metadata:",
-      "  internal: false",
-      "---",
-      "",
-      "You are the agent.",
-      "",
-    ].join("\n")
-    expect(markSkillInternal(explicitlyNotInternal)).toBe(
-      [
-        "---",
-        "name: bugfix",
-        "metadata:",
-        "  internal: true",
-        "---",
-        "",
-        "You are the agent.",
-        "",
-      ].join("\n"),
-    )
+    expect(markSkillInternal(INTERNAL_FALSE)).toBe(INTERNAL_FALSE_MARKED)
   })
 
   it("returns the original document when a skill is already internal", () => {

@@ -1,6 +1,14 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import { dirname, join, normalize, relative } from "node:path"
 
+const AREA_ROOTS: readonly string[] = [
+  ".opencode/plugins/permission-optimizer.ts",
+  ".opencode/plugins/permission-optimizer",
+  "skills/opencode-permissions",
+  "skills/opencode-permission-optimizer",
+  "scripts",
+]
+
 /** The plugin, published-skill, and repository-script areas that must not import from one another. */
 export type SourceArea = "permission-optimizer-plugin" | "opencode-permissions-skill" | "opencode-permission-optimizer-skill" | "repository-scripts"
 
@@ -10,14 +18,6 @@ export interface SourceFile {
   area: SourceArea | null
   importSpecifiers: string[]
 }
-
-const AREA_ROOTS: readonly string[] = [
-  ".opencode/plugins/permission-optimizer.ts",
-  ".opencode/plugins/permission-optimizer",
-  "skills/opencode-permissions",
-  "skills/opencode-permission-optimizer",
-  "scripts",
-]
 
 /** Return the source area that owns a repository-relative path, or null when no area owns it. */
 export function findSourceArea(path: string): SourceArea | null {

@@ -8,6 +8,7 @@ import { toAbsolutePath } from "../.opencode/plugins/permission-optimizer/absolu
 import {
   openObservationDatabase,
   readPermissionDecisionHistory,
+  type PermissionDecisionHistory,
 } from "../skills/opencode-permission-optimizer/scripts/lib/read-observations"
 import { buildAgentPermissionReport } from "../skills/opencode-permission-optimizer/scripts/agent-permission-report"
 
@@ -54,21 +55,47 @@ function seedApprovedObservation(dbPath: string): void {
   store.close()
 }
 
+function readSeededDecisionHistory(directory: string): PermissionDecisionHistory {
+  const dbPath = toAbsolutePath(join(directory, "observations.sqlite"), "database path")
+  seedApprovedObservation(dbPath)
+
+  const opened = openObservationDatabase(dbPath)
+  expect(opened.state).toBe("available")
+  if (opened.state !== "available") throw new Error("expected an available database")
+  const decisionHistory = readPermissionDecisionHistory(opened.db, {
+    repositoryIdentity: IDENTITY,
+    agent: "build",
+    fromUtc: "2026-01-01T00:00:00.000Z",
+    toUtc: "2026-12-31T00:00:00.000Z",
+  })
+  opened.db.close()
+  return decisionHistory
+}
+
+function expectIncompatibleSchemaRefused(directory: string): void {
+  const dbPath = toAbsolutePath(join(directory, "observations.sqlite"), "database path")
+  seedApprovedObservation(dbPath)
+  const writer = new Database(dbPath)
+  writer.run("UPDATE schema_metadata SET version = ?", [999])
+  writer.close()
+
+  const opened = openObservationDatabase(dbPath)
+  expect(opened).toEqual({ state: "incompatible", schemaVersion: 4, foundSchemaVersion: 999 })
+
+  expect(() =>
+    buildAgentPermissionReport({
+      agent: "build",
+      workingDirectory: toAbsolutePath(join(import.meta.dirname, ".."), "working directory"),
+      now: new Date("2026-06-01T10:00:00.000Z"),
+      databasePath: dbPath,
+      invokeInspector: () => ({ agents: [] }),
+    }),
+  ).toThrow("incompatible schema: expected 4, found 999")
+}
+
 describe("observation schema contract", () => {
   it("reads the approved observation and its requested pattern from a database written by the plugin", () => {
-    const dbPath = toAbsolutePath(join(tempDir, "observations.sqlite"), "database path")
-    seedApprovedObservation(dbPath)
-
-    const opened = openObservationDatabase(dbPath)
-    expect(opened.state).toBe("available")
-    if (opened.state !== "available") throw new Error("expected an available database")
-    const decisionHistory = readPermissionDecisionHistory(opened.db, {
-      repositoryIdentity: IDENTITY,
-      agent: "build",
-      fromUtc: "2026-01-01T00:00:00.000Z",
-      toUtc: "2026-12-31T00:00:00.000Z",
-    })
-    opened.db.close()
+    const decisionHistory = readSeededDecisionHistory(tempDir)
 
     expect(decisionHistory.counts).toEqual({
       observations: 1,
@@ -94,23 +121,6 @@ describe("observation schema contract", () => {
   })
 
   it("refuses a plugin-written database with a different schema version and names the expected and found versions", () => {
-    const dbPath = toAbsolutePath(join(tempDir, "observations.sqlite"), "database path")
-    seedApprovedObservation(dbPath)
-    const writer = new Database(dbPath)
-    writer.run("UPDATE schema_metadata SET version = ?", [999])
-    writer.close()
-
-    const opened = openObservationDatabase(dbPath)
-    expect(opened).toEqual({ state: "incompatible", schemaVersion: 4, foundSchemaVersion: 999 })
-
-    expect(() =>
-      buildAgentPermissionReport({
-        agent: "build",
-        workingDirectory: toAbsolutePath(join(import.meta.dirname, ".."), "working directory"),
-        now: new Date("2026-06-01T10:00:00.000Z"),
-        databasePath: dbPath,
-        invokeInspector: () => ({ agents: [] }),
-      }),
-    ).toThrow("incompatible schema: expected 4, found 999")
+    expectIncompatibleSchemaRefused(tempDir)
   })
 })
