@@ -3,14 +3,13 @@ import { assertPackageContents, type PackageContents } from "../check-package"
 
 const VALID: PackageContents = {
   declaredFiles: [
-    ".opencode/plugins/permission-optimizer.ts",
     ".opencode/plugins/permission-optimizer",
     "!.opencode/plugins/permission-optimizer/test/",
     "README.md",
     "LICENSE",
   ],
   packedPaths: [
-    ".opencode/plugins/permission-optimizer.ts",
+    ".opencode/plugins/permission-optimizer/index.ts",
     ".opencode/plugins/permission-optimizer/schema.sql",
     ".opencode/plugins/permission-optimizer/migrations/001-v1-to-v3.sql",
     "LICENSE",

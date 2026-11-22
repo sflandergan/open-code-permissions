@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { openDatabase } from "../src/database"
-import { createObservationStore, type ObservationStore, type ObservationStoreRecord } from "../src/store"
-import type { CompletionEvent } from "../src/model"
+import { createObservationStore, type ObservationStore } from "../src/store"
+import type { ObservationRecord, CompletionEvent } from "../src/model"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -12,7 +12,7 @@ const VALID_UTC_2 = "2026-08-05T11:00:00.000Z"
 const VALID_UTC_3 = "2026-08-05T12:00:00.000Z"
 const WORKTREE = toAbsolutePath("/home/user/project", "worktree")
 
-function makeAskedRecord(overrides: Partial<ObservationStoreRecord> = {}): ObservationStoreRecord {
+function makeAskedRecord(overrides: Partial<ObservationRecord> = {}): ObservationRecord {
   return {
     requestId: "req_001",
     sessionId: "sess_001",
@@ -330,6 +330,77 @@ describe("createObservationStore", () => {
 
   test("close releases the database", () => {
     const store = createObservationStore(dbPath)
+    store.close()
+  })
+
+  test("applies a completion only to observations whose known message id agrees", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ requestId: "req_a", callId: "call_001", messageId: "msg_a", agent: null }))
+    store.upsertAsked(makeAskedRecord({ requestId: "req_b", callId: "call_001", messageId: "msg_b", agent: null }))
+    const updated = store.updateCompletion("sess_001", "call_001", {
+      sessionId: "sess_001",
+      callId: "call_001",
+      messageId: "msg_a",
+      agent: "build",
+      tool: "shell",
+      execution: "success",
+      exitCode: 0,
+      completedAt: VALID_UTC_3,
+    })
+    expect(updated).toBe(1)
+    const db = openDatabase(dbPath)
+    const rows = db
+      .query("SELECT request_id, execution, completed_at, message_id, agent FROM observations ORDER BY request_id")
+      .all() as Array<Record<string, unknown>>
+    expect(rows).toEqual([
+      { request_id: "req_a", execution: "success", completed_at: VALID_UTC_3, message_id: "msg_a", agent: "build" },
+      { request_id: "req_b", execution: null, completed_at: null, message_id: "msg_b", agent: null },
+    ])
+    db.close()
+    store.close()
+  })
+
+  test("fills the agent from the completion without overwriting a known agent", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ callId: "call_001", agent: "explore" }))
+    store.updateCompletion("sess_001", "call_001", {
+      sessionId: "sess_001",
+      callId: "call_001",
+      messageId: null,
+      agent: "build",
+      tool: "shell",
+      execution: "success",
+      exitCode: 0,
+      completedAt: VALID_UTC_3,
+    })
+    const db = openDatabase(dbPath)
+    const obs = db.query("SELECT agent, message_id FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
+    expect(obs.agent).toBe("explore")
+    expect(obs.message_id).toBeNull()
+    db.close()
+    store.close()
+  })
+
+  test("rolls back the completion when it violates the shell exit invariant", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ callId: "call_001" }))
+    expect(() =>
+      store.updateCompletion("sess_001", "call_001", {
+        sessionId: "sess_001",
+        callId: "call_001",
+        messageId: null,
+        agent: null,
+        tool: "shell",
+        execution: "success",
+        exitCode: 1,
+        completedAt: VALID_UTC_3,
+      }),
+    ).toThrow()
+    const db = openDatabase(dbPath)
+    const obs = db.query("SELECT execution, completed_at FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
+    expect(obs.execution).toBeNull()
+    expect(obs.completed_at).toBeNull()
+    db.close()
     store.close()
   })
 

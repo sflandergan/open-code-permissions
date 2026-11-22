@@ -6,7 +6,7 @@ import { tmpdir } from "node:os"
 import { toAbsolutePath } from "../src/absolute-path"
 import { resolveDatabasePath } from "../src/database-path"
 import { formatRepositoryIdentity } from "../src/repository-identity"
-import { createAgentResolver, resolveRepositoryIdentityFromGit } from "../src/runtime-context"
+import { resolveRepositoryIdentityFromGit } from "../src/runtime-context"
 
 describe("resolveDatabasePath", () => {
   const originalEnv = process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH
@@ -35,77 +35,6 @@ describe("resolveDatabasePath", () => {
     expect(path).toContain("opencode")
     expect(path).toContain("permission-optimizer")
     expect(path).toContain("observations.sqlite")
-  })
-})
-
-describe("createAgentResolver", () => {
-  test("resolves the agent from the assistant message", async () => {
-    const mockClient = {
-      session: {
-        message: async () => ({
-          data: {
-            info: { agent: "implement", mode: "all" },
-          },
-        }),
-      },
-    }
-    const resolver = createAgentResolver(mockClient as never, () => {})
-    const result = await resolver.resolve({ sessionId: "sess_01", messageId: "msg_01" })
-    expect(result).toBe("implement")
-  })
-
-  test("returns null when the message identifier is absent", async () => {
-    const warnings: string[] = []
-    const mockClient = { session: { message: async () => ({}) } }
-    const resolver = createAgentResolver(mockClient as never, (message) => warnings.push(message))
-    const result = await resolver.resolve({ sessionId: "sess_01", messageId: null })
-    expect(result).toBeNull()
-    expect(warnings).toEqual([])
-  })
-
-  test("reports a failed runtime lookup with the session and returns null", async () => {
-    const warnings: string[] = []
-    const mockClient = {
-      session: {
-        message: async () => {
-          throw new Error("not found")
-        },
-      },
-    }
-    const resolver = createAgentResolver(mockClient as never, (message) => warnings.push(message))
-    const result = await resolver.resolve({ sessionId: "sess_01", messageId: "msg_01" })
-    expect(result).toBeNull()
-    expect(warnings).toEqual(["agent lookup failed for session sess_01: not found"])
-  })
-
-  test("returns null when the message names no agent", async () => {
-    const mockClient = {
-      session: {
-        message: async () => ({
-          data: { info: { mode: "all" } },
-        }),
-      },
-    }
-    const resolver = createAgentResolver(mockClient as never, () => {})
-    const result = await resolver.resolve({ sessionId: "sess_01", messageId: "msg_01" })
-    expect(result).toBeNull()
-  })
-
-  test("requests only the session and message identifiers from the runtime", async () => {
-    let capturedArgs: unknown = null
-    const mockClient = {
-      session: {
-        message: async (args: unknown) => {
-          capturedArgs = args
-          return { data: { info: { agent: "explore", mode: "all" } } }
-        },
-      },
-    }
-    const resolver = createAgentResolver(mockClient as never, () => {})
-    await resolver.resolve({ sessionId: "sess_01", messageId: "msg_01" })
-    const args = capturedArgs as { path: { id: string; messageID: string } }
-    expect(args.path.id).toBe("sess_01")
-    expect(args.path.messageID).toBe("msg_01")
   })
 })
 

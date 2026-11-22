@@ -22,19 +22,11 @@ export type ObservationOrigin = {
 }
 
 /**
- * Store input for one asked observation: the model record plus the optional
- * OpenCode major version that produced it. When omitted, the writer records
- * the legacy major version `1`; on a duplicate `request_id` the originally
- * recorded major version is kept.
- */
-export type ObservationStoreRecord = ObservationRecord & { historySourceVersion?: 1 | 2 }
-
-/**
  * Interface for the permission optimizer's observation database.
  * All methods are synchronous and execute within short SQLite transactions.
  */
 export type ObservationStore = {
-  upsertAsked(record: ObservationStoreRecord): void
+  upsertAsked(record: ObservationRecord): void
   fillObservationOrigin(requestId: string, origin: ObservationOrigin): void
   updateDecision(requestId: string, decision: PermissionDecision, decidedAt: string): number
   updateCompletion(sessionId: string, callId: string, completion: CompletionEvent): number
@@ -63,7 +55,7 @@ class SqliteObservationStore implements ObservationStore {
     this.pruneWhenDue()
   }
 
-  upsertAsked(record: ObservationStoreRecord): void {
+  upsertAsked(record: ObservationRecord): void {
     assertCanonicalAskedFacts(record)
     this.withTransaction(() => {
       const id = this.upsertObservationRow(record)
@@ -103,6 +95,13 @@ class SqliteObservationStore implements ObservationStore {
     return result.changes
   }
 
+  /**
+   * Records the completion for every pending observation of the session/call
+   * pair whose known message ID agrees with the completion's, filling the
+   * message ID and agent origin on the same rows. A known message ID that
+   * disagrees vetoes the row, so a completion never lands on an unrelated
+   * message. Returns the number of updated rows.
+   */
   updateCompletion(
     sessionId: string,
     callId: string,
@@ -111,18 +110,26 @@ class SqliteObservationStore implements ObservationStore {
     assertNonEmpty(sessionId, "sessionId")
     assertNonEmpty(callId, "callId")
     assertCanonicalTimestamp(completion.completedAt, "completedAt")
+    const messageId = completion.messageId ?? null
     const result = this.withTransaction(() =>
       this.db.run(
         `UPDATE observations
-         SET tool = ?, execution = ?, exit_code = ?, completed_at = ?
-         WHERE session_id = ? AND call_id = ? AND completed_at IS NULL`,
+         SET tool = ?, execution = ?, exit_code = ?, completed_at = ?,
+             message_id = COALESCE(message_id, ?),
+             agent = COALESCE(agent, ?)
+         WHERE session_id = ? AND call_id = ? AND completed_at IS NULL
+           AND (? IS NULL OR message_id IS NULL OR message_id = ?)`,
         [
           completion.tool,
           completion.execution,
           completion.exitCode,
           completion.completedAt,
+          messageId,
+          completion.agent ?? null,
           sessionId,
           callId,
+          messageId,
+          messageId,
         ],
       ),
     )
@@ -159,7 +166,7 @@ class SqliteObservationStore implements ObservationStore {
    * and existing decision/completion facts are untouched. Returns the stable
    * row id for child replacement.
    */
-  private upsertObservationRow(record: ObservationStoreRecord): number {
+  private upsertObservationRow(record: ObservationRecord): number {
     const row = this.db
       .query(
         `INSERT INTO observations
@@ -244,7 +251,7 @@ class SqliteObservationStore implements ObservationStore {
   }
 }
 
-function assertCanonicalAskedFacts(record: ObservationStoreRecord): void {
+function assertCanonicalAskedFacts(record: ObservationRecord): void {
   assertNonEmpty(record.requestId, "requestId")
   assertNonEmpty(record.sessionId, "sessionId")
   assertNonEmpty(record.worktree, "worktree")
