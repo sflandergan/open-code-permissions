@@ -184,7 +184,7 @@ Use ordered command-specific rules to allow literal repository-relative output w
 ```json
 "permissions": [
   { "action": "shell", "resource": "*", "effect": "ask" },
-  { "action": "shell", "resource": "echo *> ./", "effect": "allow" },
+  { "action": "shell", "resource": "echo *> ./*", "effect": "allow" },
   { "action": "shell", "resource": "echo *> ./*..*", "effect": "deny" },
   { "action": "shell", "resource": "echo *> ..*", "effect": "deny" },
   { "action": "shell", "resource": "echo *> /*", "effect": "ask" }
@@ -209,4 +209,4 @@ A broad command deny stays suppressive only while its deliberate exceptions land
 
 Every `npm` invocation is denied except the deliberately placed `npm test *` exception after the broad deny, and the unconditional `git push` ban is last, so it wins every contest against an overlapping rule and any future exception must be a new, deliberate placement.
 
-Review the exact text a narrowed exception admits before confirming it: `npm test *` also matches `npm test; git status`, because `*` spans separators and later commands inside one statement. The exception stays deliberate only when the owner has reviewed that admitted text.
+Review the exact text a narrowed exception admits before confirming it: `npm test *` also matches `npm test -- --watch` and any other argument forms, because the trailing " *" group spans the whole argument text. A compound statement is different: the runtime evaluates each parsed command node separately, so `npm test; git status` produces one `npm test` check and one `git status` check, each matched on its own merits. The exception stays deliberate only when the owner has reviewed the admitted text.
