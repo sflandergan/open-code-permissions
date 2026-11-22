@@ -20,7 +20,6 @@
     "mark-internal-skills": "bun scripts/mark-internal-skills.ts"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.19.5",
     "@opencode/plugin": "2.3.2",
     "@types/bun": "^1.4.4",
     "typescript": "~6.0.3"

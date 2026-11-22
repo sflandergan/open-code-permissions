@@ -1,64 +1,144 @@
 ---
 description: Protected agent for managing OpenCode permission policy through confirmed direct edits with the read-only inspector.
-permission:
-  edit:
-    "*": deny
-    "opencode.json": allow
-    "opencode.jsonc": allow
-    ".opencode/agents/*.md": allow
-    ".opencode/agents/opencode-permissions.md": deny
-    "AGENTS.md": ask
-  write:
-    "*": deny
-    "opencode.json": allow
-    "opencode.jsonc": allow
-    ".opencode/agents/*.md": allow
-    ".opencode/agents/opencode-permissions.md": deny
-    "AGENTS.md": ask
-  question: allow
-  task:
-    "*": deny
-  skill:
-    "*": deny
-    "opencode-permissions": allow
-    "opencode-permission-optimizer": allow
-    "git-publish": allow
-  read:
-    "*": deny
-    "opencode.json": allow
-    "opencode.jsonc": allow
-    ".opencode/agents/*.md": allow
-    "skills/opencode-permissions/**": allow
-    "skills/opencode-permission-optimizer/**": allow
-    ".agents/skills/**": allow
-    "docs/agents/**": allow
-    "AGENTS.md": allow
-    "plans/**": allow
-    ".temp/permission-inspect-output-*": allow
-    ".temp/permission-optimizer-output-*": allow
-  bash:
-    "*": deny
-    "bash \"*/opencode-permissions/scripts/inspect.sh\" list-agents*": allow
-    "bash \"*/opencode-permissions/scripts/inspect.sh\" show-effective*": allow
-    "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *": allow
-    "bash \"*/opencode-permission-optimizer/scripts/list-agents.sh\"*": allow
-    "bash skills/opencode-permissions/scripts/inspect.sh list-agents*": allow
-    "bash skills/opencode-permissions/scripts/inspect.sh show-effective*": allow
-    "bash skills/opencode-permission-optimizer/scripts/list-agents.sh*": allow
-    "bash skills/opencode-permission-optimizer/scripts/agent-permission-report.sh --agent *": allow
-    "rm -- .temp/permission-inspect-output-*": allow
-    "rm -- .temp/permission-optimizer-output-*": allow
-    "git diff *": allow
-    "git log *": allow
-    "git ls-files *": allow
-    "git show *": allow
-    "git status *": allow
-    "git commit *": allow
-    "git add *": allow
-    "bash .agents/skills/git-publish/scripts/publish-branch.sh": allow
-    "bash .agents/skills/git-publish/scripts/publish-branch.sh *": allow
-    "*>*": ask
-    "*<*": ask
+permissions:
+  - action: "edit"
+    resource: "*"
+    effect: deny
+  - action: "edit"
+    resource: "opencode.json"
+    effect: allow
+  - action: "edit"
+    resource: "opencode.jsonc"
+    effect: allow
+  - action: "edit"
+    resource: ".opencode/agents/*.md"
+    effect: allow
+  - action: "edit"
+    resource: ".opencode/agents/opencode-permissions.md"
+    effect: deny
+  - action: "edit"
+    resource: "AGENTS.md"
+    effect: ask
+  - action: "question"
+    resource: "*"
+    effect: allow
+  - action: "subagent"
+    resource: "*"
+    effect: deny
+  - action: "skill"
+    resource: "*"
+    effect: deny
+  - action: "skill"
+    resource: "opencode-permissions"
+    effect: allow
+  - action: "skill"
+    resource: "opencode-permission-optimizer"
+    effect: allow
+  - action: "skill"
+    resource: "git-publish"
+    effect: allow
+  - action: "read"
+    resource: "*"
+    effect: deny
+  - action: "read"
+    resource: "opencode.json"
+    effect: allow
+  - action: "read"
+    resource: "opencode.jsonc"
+    effect: allow
+  - action: "read"
+    resource: ".opencode/agents/*.md"
+    effect: allow
+  - action: "read"
+    resource: "skills/opencode-permissions/**"
+    effect: allow
+  - action: "read"
+    resource: "skills/opencode-permission-optimizer/**"
+    effect: allow
+  - action: "read"
+    resource: ".agents/skills/**"
+    effect: allow
+  - action: "read"
+    resource: "docs/agents/**"
+    effect: allow
+  - action: "read"
+    resource: "AGENTS.md"
+    effect: allow
+  - action: "read"
+    resource: "plans/**"
+    effect: allow
+  - action: "read"
+    resource: ".temp/permission-inspect-output-*"
+    effect: allow
+  - action: "read"
+    resource: ".temp/permission-optimizer-output-*"
+    effect: allow
+  - action: "shell"
+    resource: "*"
+    effect: deny
+  - action: "shell"
+    resource: "bash \"*/opencode-permissions/scripts/inspect.sh\" list-agents*"
+    effect: allow
+  - action: "shell"
+    resource: "bash \"*/opencode-permissions/scripts/inspect.sh\" show-effective*"
+    effect: allow
+  - action: "shell"
+    resource: "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *"
+    effect: allow
+  - action: "shell"
+    resource: "bash \"*/opencode-permission-optimizer/scripts/list-agents.sh\"*"
+    effect: allow
+  - action: "shell"
+    resource: "bash skills/opencode-permissions/scripts/inspect.sh list-agents*"
+    effect: allow
+  - action: "shell"
+    resource: "bash skills/opencode-permissions/scripts/inspect.sh show-effective*"
+    effect: allow
+  - action: "shell"
+    resource: "bash skills/opencode-permission-optimizer/scripts/list-agents.sh*"
+    effect: allow
+  - action: "shell"
+    resource: "bash skills/opencode-permission-optimizer/scripts/agent-permission-report.sh --agent *"
+    effect: allow
+  - action: "shell"
+    resource: "rm -- .temp/permission-inspect-output-*"
+    effect: allow
+  - action: "shell"
+    resource: "rm -- .temp/permission-optimizer-output-*"
+    effect: allow
+  - action: "shell"
+    resource: "git diff *"
+    effect: allow
+  - action: "shell"
+    resource: "git log *"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-files *"
+    effect: allow
+  - action: "shell"
+    resource: "git show *"
+    effect: allow
+  - action: "shell"
+    resource: "git status *"
+    effect: allow
+  - action: "shell"
+    resource: "git commit *"
+    effect: allow
+  - action: "shell"
+    resource: "git add *"
+    effect: allow
+  - action: "shell"
+    resource: "bash .agents/skills/git-publish/scripts/publish-branch.sh"
+    effect: allow
+  - action: "shell"
+    resource: "bash .agents/skills/git-publish/scripts/publish-branch.sh *"
+    effect: allow
+  - action: "shell"
+    resource: "*>*"
+    effect: ask
+  - action: "shell"
+    resource: "*<*"
+    effect: ask
 ---
 
 You are the OpenCode permission agent for this repository.
