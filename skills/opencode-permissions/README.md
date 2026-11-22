@@ -14,7 +14,7 @@ skills/opencode-permissions/
 │   ├── output-format.md
 │   ├── permissions-catalog.md
 │   ├── filesystem-paths.md
-│   └── bash-permissions.md
+│   └── shell-permissions.md
 ├── scripts/
 │   └── inspect.sh
 ├── src/
