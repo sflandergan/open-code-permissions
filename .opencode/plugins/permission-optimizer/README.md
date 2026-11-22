@@ -4,15 +4,20 @@ Project-local OpenCode plugin that records permission request lifecycles for the
 
 ## How it works
 
-OpenCode auto-loads `.opencode/plugins/*.{js,ts}` entries. This plugin registers `event` and `tool.execute.after` hooks to capture:
+OpenCode loads the plugin through either local `.opencode/plugins/` discovery or
+a package install configured under `plugins`. This plugin registers `event` and
+`tool.execute.after` hooks to capture:
 
 - `permission.asked` events → create observation records
 - `permission.replied` events → record decisions
 - `tool.execute.after` hooks → record execution outcomes
 
 Events are correlated into idempotent lifecycles keyed by the OpenCode `request_id`.
+Only requests the runtime actually asks about are recorded: a rule that resolves to
+`allow` or `deny` without an ask never reaches the observation database.
 
-Reply cascade classification was verified against OpenCode 1.18.11.
+Reply cascade classification and the event stream were verified against the pinned
+OpenCode 2.3.2 runtime.
 
 ## Database
 
@@ -37,12 +42,13 @@ insert/update with its ordered requested patterns commits as one transaction.
 
 ## Schema and migrations
 
-Version 4 uses three STRICT tables: `schema_metadata`, `observations`, and
-`requested_patterns`. A plugin startup migrates a verified v1, v2 or v3 database to
-v4 in one transaction, preserving every observation and requested pattern. When the
-schema is unsupported or malformed, the database is left unchanged, the plugin warns
-once at startup (naming the expected and found versions when the schema version is
-unsupported), and records nothing for the session.
+Version 5 uses three STRICT tables: `schema_metadata`, `observations`, and
+`requested_resources`. A plugin startup migrates a verified older database to
+the current version in one transaction, preserving every observation and
+requested resource. When the schema is unsupported or malformed, the database is
+left unchanged, the plugin warns once at startup (naming the expected and found
+versions when the schema version is unsupported), and records nothing for the
+session.
 
 A rejected permission is recorded with decision `reject` and its decision time;
 the tool never runs, so no completion is recorded and retention counts from the
@@ -62,9 +68,43 @@ once per hour during ordinary writes. No scheduler is required.
 - Raw remote URLs are sanitized to `host/path` form before storage.
 - Filesystem modes protect observations from group/other OS accounts; they do not isolate processes running as the same OS user.
 
+## Pinned runtime smoke
+
+Outside the hermetic suite, `scripts/smoke/v2-runtime.sh` runs an
+owner-assisted acceptance gate against the pinned OpenCode 2.3.2 binary:
+
+```bash
+OPENCODE_V2_BIN=<path-to-opencode-2.3.2> bash scripts/smoke/v2-runtime.sh setup
+# follow the printed launcher sequence and approve each ask once in your terminal
+OPENCODE_V2_BIN=<path-to-opencode-2.3.2> bash scripts/smoke/v2-runtime.sh verify <run-dir>
+bash scripts/smoke/v2-runtime.sh teardown <run-dir>
+```
+
+The gate verifies the local install route end to end: exactly one
+qualifying marker observation with the correct repository identity, agent,
+decision `once`, successful completion, zero exit, and history source `2`,
+that the optimizer report reflects the same evidence, that prompts and
+redirects behave under the configured webfetch origin rules, that a stale
+editing-skill apply never writes, and that the run never touches the
+owner's regular observation database. The verifier machine-checks those
+criteria and the owner records the assisted confirmations it lists.
+
+The package install route is an open item (issue #2: the plugin is not
+published to npm yet). On the pinned 2.3.2 runtime a config-declared remote
+tarball plugin never reaches the pending/install pass, so nothing installs
+or records; the verifier records that observed state under
+`results/package-route-open-item.json` instead of asserting install
+evidence until the npm publishing route lands.
+
+The runtime unload path keeps its hermetic cleanup contract in the plugin
+test suite — direct handle and abort assertions cover subscription teardown,
+in-flight drain, and storage close — so the smoke only re-observes the
+behavioral side: databases stay unchanged after shutdown and no
+`permission-optimizer:` cleanup diagnostics appear.
+
 ## Removal
 
-1. Remove `.opencode/plugins/permission-optimizer.ts` and `.opencode/plugins/permission-optimizer/`.
+1. Remove `.opencode/plugins/permission-optimizer/`.
 2. Delete the user-local database if immediate cleanup is desired.
 
 ## Tests
