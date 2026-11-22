@@ -5,7 +5,7 @@ The `permission-optimizer` OpenCode plugin records every permission request life
 ## Main Packages and Entry Points
 
 - `.opencode/plugins/permission-optimizer/` — plugin modules under `src/`, `schema.sql`, and `migrations/`.
-- `.opencode/plugins/permission-optimizer.ts` — the plugin entry; it exports exactly one symbol because OpenCode treats every export of a plugin module as a plugin.
+- `.opencode/plugins/permission-optimizer/index.ts` — the plugin entry OpenCode 2.x discovers as a directory plugin; it default-exports a single `Plugin.define` definition, which the runtime loads as the one plugin of the package.
 
 ## Non-obvious Decisions
 

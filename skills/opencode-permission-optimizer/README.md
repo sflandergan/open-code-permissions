@@ -36,7 +36,7 @@ skills/opencode-permission-optimizer/
 ```
 
 - `SKILL.md` — the executable advisory workflow.
-- `references/opencode-permission-model.md` — `external_directory` and Bash path semantics, loaded only for targets outside the project.
+- `references/opencode-permission-model.md` — `external_directory` and `shell` path semantics, loaded only for targets outside the project.
 - `references/native-roles.md` — role guidance for permission-relevant native agents.
 - `references/webfetch-trust-scopes.md` — the URL scopes webfetch evidence is grouped into and the hosts without a supported boundary.
 - `scripts/` — the two command wrappers.

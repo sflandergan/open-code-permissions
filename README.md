@@ -2,13 +2,13 @@
 
 OpenCode plugin and skills for recording and reviewing permission observations, plus an agent that manages permission policy through confirmed direct edits.
 
-This repository ships one product with **one version**: the `version` in `package.json` is the only version, and the skills and agent carry none. A release is a single `vX.Y.Z` tag. Install the skills at the same tag as the npm version so the plugin and the optimizer reader agree on the SQLite schema (version 4).
+This repository ships one product with **one version**: the `version` in `package.json` is the only version, and the skills and agent carry none. A release is a single `vX.Y.Z` tag. Install the skills at the same tag as the npm version so the plugin and the optimizer reader agree on the SQLite schema (version 5).
 
 > The package is `private: true` until [issue #2](https://github.com/sflandergan/open-code-permissions/issues/2) adds release automation. It is publishable but not published.
 
 ## Requirements
 
-- [OpenCode](https://opencode.ai): its Bun runtime provides `bun:sqlite`, which the plugin uses to record observations.
+- [OpenCode](https://opencode.ai) 2.x: its Bun runtime provides `bun:sqlite`, which the plugin uses to record observations. Pin the tested runtime with `curl -fsSL https://opencode.ai/v2/install | bash -s -- --version 2.3.2`. The checkout runs native 2.x configuration (ordered `permissions` rules and `agents` entries) on the supported `opencode-go` provider; the former custom Mistral adapter was removed in the 2.x port.
 - [Bun](https://bun.sh) on `PATH`: the skill scripts are TypeScript run directly by Bun, and development uses `bun install`, `bun test` and `bun run typecheck`. Consumers of the skills need Bun installed.
 
 ## What ships
@@ -22,7 +22,14 @@ This repository ships one product with **one version**: the `version` in `packag
 
 ## Install the plugin
 
-OpenCode auto-loads `.opencode/plugins/*.ts` entries. The package's `exports["."]` is `.opencode/plugins/permission-optimizer.ts`, the same file OpenCode auto-loads when this repository dogfoods the plugin; the entry exports exactly one symbol, `PermissionOptimizerPlugin`. The plugin records `permission.asked`, `permission.replied` and `tool.execute.after` into a user-local SQLite database. Override its location with `OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH` (default: the user's application-data directory).
+The recorder ships as the directory plugin `.opencode/plugins/permission-optimizer/` and has two installation routes:
+
+1. **Published package** (once [issue #2](https://github.com/sflandergan/open-code-permissions/issues/2) publishes it): declare it in your project as `plugins: [{ "package": "opencode-permissions@X.Y.Z" }]` so OpenCode installs it from npm with the rest of your project tooling. The package's `exports["."]` resolves to `.opencode/plugins/permission-optimizer/index.ts`.
+2. **Repository-local**: keep `.opencode/plugins/permission-optimizer/` in your project's `.opencode/plugins/` directory; OpenCode 2.x discovers directory plugins automatically. This repository dogfoods the plugin that way.
+
+The entry (`index.ts`) default-exports a single `Plugin.define` definition from `@opencode/plugin`. The plugin registers `permission.asked` and `permission.replied` event subscriptions plus a `tool.execute.after` hook and records them into a user-local SQLite database. Override its location with `OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH` (default: the user's application-data directory).
+
+One runtime default is worth knowing when you migrate your own rules: OpenCode 2.x allows `external_directory` by default. Keeping the previous caution means declaring an explicit broad `external_directory` `ask` rule in shared `permissions` before any narrower exceptions — this checkout does exactly that, so agent-local catch-alls do not override the owner's shared exceptions.
 
 ## Install the skills
 
@@ -37,7 +44,7 @@ Both skills require `bun` on `PATH`. Every other toolkit skill is hidden from th
 
 ## Install the agent
 
-Copy `.opencode/agents/opencode-permissions.md` into your consumer repository's `.opencode/agents/` directory. It is deliberately a copy-in file, not registered by the plugin through a `config` hook, so the consumer can review a policy-editing agent's permission rules before use.
+Copy `.opencode/agents/opencode-permissions.md` into your consumer repository's `.opencode/agents/` directory and review its native 2.x `permissions` frontmatter before trusting it — the rules use the ordered native form this release documents. It is deliberately a copy-in file, not registered by the plugin through a `config` hook, so the consumer can review a policy-editing agent's permission rules before use. Refresh it whenever you adopt a new release of this repository.
 
 ## Development
 

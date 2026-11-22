@@ -102,6 +102,41 @@ in-flight drain, and storage close — so the smoke only re-observes the
 behavioral side: databases stay unchanged after shutdown and no
 `permission-optimizer:` cleanup diagnostics appear.
 
+## Upgrading, backup, and rollback
+
+One release ships the plugin and both skills as a compatible unit, and the
+recorder owns this version-5 database; a reader from a different release
+level refuses the database instead of guessing when the schema disagrees.
+The database location, the
+`OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH` override, and the 30-day
+retention semantics do not change across releases; the same wall clock
+drives retention.
+
+Before upgrading, take a backup while the recorder is stopped — close the
+OpenCode sessions running the plugin, or take a consistent SQLite backup
+(for example `sqlite3 observations.sqlite ".backup 'backup.sqlite'"`).
+Roll back by restoring that backup together with the previous tooling
+version from the same release tag. The recorder never rewrites history on
+rollback; restoring the backup is the whole database state.
+
+## Approvals versus recommendations
+
+Recorded observations are facts about what was asked and decided:
+`qualifying_approval` marks a successful, attributed approval, nothing
+more. The optimizer's recommendations are advisory evidence — proposed
+rules become policy only through the editing skill's owner-confirmed
+apply, never from the database alone.
+
+## Webfetch saves
+
+Approving the built-in webfetch tool with "Allow always" saves a
+project-level `*` wildcard that suppresses future prompts; it never
+becomes URL evidence for a scoped rule. Grouped URL evidence and the
+trust boundaries are defined in the
+`opencode-permission-optimizer` skill's
+`references/webfetch-trust-scopes.md`, and the pinned-runtime smoke
+exercises the flow end to end (see "Pinned runtime smoke" above).
+
 ## Removal
 
 1. Remove `.opencode/plugins/permission-optimizer/`.
