@@ -1,92 +1,9 @@
-# Task 09 — Copy-in agent moves to native 2.x permissions
+# Task 09 — Cut over the checkout to native OpenCode 2.x
 
-## Objective
+**Depends on:** Tasks 03, 05 and 07. **Files:** `opencode.json`, `.opencode/agents/{explore,implement-task,opencode-permissions}.md`, `.agentic-coding.json`, `.opencode/plugins/mistral-3rd-party.ts`, `.opencode/plugins/mistral-3rd-party/`, `package.json`, and `bun.lock`. `.opencode/package.json` and `.opencode/package-lock.json` are local generated files; replace any generated 1.x installation by regenerating it with the 2.x host, not by tracking these files. Do not upgrade the toolkit as part of this task.
 
-Convert the copy-in `opencode-permissions` agent definition to native 2.x `permissions` frontmatter — folding `write` into `edit` and renaming `bash` to `shell` and `task` to `subagent` per the runtime's action renames — while retaining its self-protection matrix and confirmation behavior exactly.
-
-## Files
-
-- Modify: `.opencode/agents/opencode-permissions.md`
-
-## Interfaces
-
-- Consumes: task 07's Access boundary and workflow vocabulary (`shell` action, agent id, native rule list).
-- Produces: the agent definition consumers copy into their repositories; the runtime reads the native frontmatter directly. Its body behavior (which skills to invoke) is unchanged.
-
-## Verified facts used
-
-V2 agent-file frontmatter with `permissions` is read as native; `prompt`→`system`-style renames do not apply because this file has no such fields; the action renames are `bash` → `shell`, `task` → `subagent`, `write`/`patch` → `edit`; earlier `ask` on `external_directory` must become an explicit rule because 2.x allows external directories by default; the file's own read self-protection under the current 1.x runtime in this repository is intentionally traded for native configuration, per the approved spec ("The copy-in agent must use the native configuration") — consumers running the 2.x runtime get identical protection, and this repository's own dev runtime does not run the tooling release (non-goal).
-
-- [ ] **Step 1: Rewrite the frontmatter**
-
-Replace the frontmatter of `.opencode/agents/opencode-permissions.md` (body below the frontmatter stays byte-identical) with:
-
-```yaml
----
-description: Protected agent for managing OpenCode permission policy through confirmed direct edits with the read-only inspector.
-permissions:
-  - { action: "edit", resource: "*", effect: "deny" }
-  - { action: "edit", resource: "opencode.json", effect: "allow" }
-  - { action: "edit", resource: "opencode.jsonc", effect: "allow" }
-  - { action: "edit", resource: ".opencode/agents/*.md", effect: "allow" }
-  - { action: "edit", resource: ".opencode/agents/opencode-permissions.md", effect: "deny" }
-  - { action: "edit", resource: "AGENTS.md", effect: "ask" }
-  - { action: "question", resource: "*", effect: "allow" }
-  - { action: "subagent", resource: "*", effect: "deny" }
-  - { action: "skill", resource: "*", effect: "deny" }
-  - { action: "skill", resource: "opencode-permissions", effect: "allow" }
-  - { action: "skill", resource: "opencode-permission-optimizer", effect: "allow" }
-  - { action: "skill", resource: "git-publish", effect: "allow" }
-  - { action: "read", resource: "*", effect: "deny" }
-  - { action: "read", resource: "opencode.json", effect: "allow" }
-  - { action: "read", resource: "opencode.jsonc", effect: "allow" }
-  - { action: "read", resource: ".opencode/agents/*.md", effect: "allow" }
-  - { action: "read", resource: "skills/opencode-permissions/**", effect: "allow" }
-  - { action: "read", resource: "skills/opencode-permission-optimizer/**", effect: "allow" }
-  - { action: "read", resource: ".agents/skills/**", effect: "allow" }
-  - { action: "read", resource: "docs/agents/**", effect: "allow" }
-  - { action: "read", resource: "AGENTS.md", effect: "allow" }
-  - { action: "read", resource: "plans/**", effect: "allow" }
-  - { action: "read", resource: ".temp/permission-inspect-output-*", effect: "allow" }
-  - { action: "read", resource: ".temp/permission-optimizer-output-*", effect: "allow" }
-  - { action: "shell", resource: "*", effect: "deny" }
-  - { action: "shell", resource: "bash \"*/opencode-permissions/scripts/inspect.sh\" list-agents*", effect: "allow" }
-  - { action: "shell", resource: "bash \"*/opencode-permissions/scripts/inspect.sh\" show-effective*", effect: "allow" }
-  - { action: "shell", resource: "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *", effect: "allow" }
-  - { action: "shell", resource: "bash \"*/opencode-permission-optimizer/scripts/list-agents.sh\"*", effect: "allow" }
-  - { action: "shell", resource: "bash skills/opencode-permissions/scripts/inspect.sh list-agents*", effect: "allow" }
-  - { action: "shell", resource: "bash skills/opencode-permissions/scripts/inspect.sh show-effective*", effect: "allow" }
-  - { action: "shell", resource: "bash skills/opencode-permission-optimizer/scripts/list-agents.sh*", effect: "allow" }
-  - { action: "shell", resource: "bash skills/opencode-permission-optimizer/scripts/agent-permission-report.sh --agent *", effect: "allow" }
-  - { action: "shell", resource: "rm -- .temp/permission-inspect-output-*", effect: "allow" }
-  - { action: "shell", resource: "rm -- .temp/permission-optimizer-output-*", effect: "allow" }
-  - { action: "shell", resource: "git diff *", effect: "allow" }
-  - { action: "shell", resource: "git log *", effect: "allow" }
-  - { action: "shell", resource: "git ls-files *", effect: "allow" }
-  - { action: "shell", resource: "git show *", effect: "allow" }
-  - { action: "shell", resource: "git status *", effect: "allow" }
-  - { action: "shell", resource: "git commit *", effect: "allow" }
-  - { action: "shell", resource: "git add *", effect: "allow" }
-  - { action: "shell", resource: "bash .agents/skills/git-publish/scripts/publish-branch.sh", effect: "allow" }
-  - { action: "shell", resource: "bash .agents/skills/git-publish/scripts/publish-branch.sh *", effect: "allow" }
-  - { action: "shell", resource: "*>*", effect: "ask" }
-  - { action: "shell", resource: "*<*", effect: "ask" }
----
-```
-
-Mapping rules applied (verify each row against the old frontmatter before committing): every `edit:`/`write:` map entry folds into the `edit` block (the two 1.x maps were identical for this agent, so folding loses nothing); `task: { "*": "deny" }` becomes the one `subagent` rule; every `bash:` map entry becomes a `shell` rule with the same resource text and effect; ordering within each action group preserves the old map order; the old `question: allow` becomes the explicit `question` rule; there are deliberately **no** `external_directory` rules — the agent was never granted one before, and 2.x's allow-by-default is unchanged self-protection-wise because the agent's own `read`/`edit` trees remain allow-listed.
-
-- [ ] **Step 2: Verify**
-
-Docs-only change (a runtime-consumed definition, no code): confirm the body is untouched (`git diff` shows only the frontmatter), confirm the mapping row-by-row against the previous frontmatter, and confirm `bun run typecheck` stays green. Note in the task report the stated consequence: this native frontmatter applies under the 2.x runtime; this repository's own 1.x dev runtime no longer applies these guards to this agent (accepted by the approved spec and the port's non-goals).
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add .opencode/agents/opencode-permissions.md
-git commit -m "feat: state the copy-in agent's policy in native 2.x permissions"
-```
-
-## Changed-code audit
-
-Not applicable — no TypeScript change; the definition's self-protection matrix is verified row-by-row in the task report (each old entry and its new native rule listed).
+- [ ] Before editing, capture the pinned runtime’s `debug agents` output for existing config in a disposable checkout with the incompatible local plugin omitted. Inventory the intended winners for build, explore, implement-task and the protected agent. Cover worker dispatch, inspector/report wrappers, agent self-edit denial, nested guidance denial, root `AGENTS.md` ask, external-directory fallback and exceptions, shell redirect guards, and unconditional command bans. If an effective 1.x protection already differs in the v2 compatibility view, preserve the intended protection in the native result. Do not preserve incidental broadening.
+- [ ] Convert `opencode.json` to native `permissions` and `agents` using the [pinned migration guide](https://github.com/anomalyco/opencode/blob/v2.3.2/services/site/src/docs/content/migrate-v1.mdx). Expand scalar effects to resource `*`; flatten ordered patterns; map `bash`→`shell`, `task`→`subagent`, and fold equivalent `write`/`patch` rules into `edit`. Keep custom actions literal unless the pinned runtime identifies a rename. Convert `disable` to `disabled` and `small_model` to `agents.title.model`. Keep `build` as the default agent and keep `plan` disabled. Use the repository’s existing official `opencode-go/deepseek-v4.1-flash` selection for the top-level default; remove `build`’s Mistral-specific override so it inherits that selection. Preserve worker model selections using native `model` syntax; move sampling fields into a supported model variant only when the pinned runtime supports the setting, and record any omitted legacy-only tuning. Add a shared `external_directory` fallback `ask` before the existing exceptions. Document that same shared fallback for copy-in consumers in Task 11; an agent-local catch-all would override the owner’s shared exceptions.
+- [ ] Convert all three agent frontmatters completely to native fields. Preserve Markdown instructions unless a referenced command or rule name changes under v2. Retain the protected agent’s repository config edit scope, self-denial, guidance boundaries, skill access, shell rules and subagent restrictions. Confirm unconditional bans remain terminal where another rule overlaps; narrow exceptions must be intentional.
+- [ ] Remove the custom provider block and all its selected model IDs; `git rm` the adapter and its companion directory. Change `.agentic-coding.json` selection to `opencode-go`, remove the custom profile fragments and the three adapter asset records, and align the managed OpenCode fragments/recorded baselines with the checked-in native output so setup does not reintroduce 1.x permissions or that provider. Retain generic toolkit support for other projects. Remove `@opencode-ai/plugin` from the root devDependencies; run `bun install`. Verify tracked runtime inputs by `git grep -n -i -E 'mistral-3rd-party|opencode-go-mistral|@opencode-ai/plugin' -- opencode.json .opencode .agentic-coding.json package.json bun.lock`; expect no matches after the update.
+- [ ] With the pinned binary and an isolated observation DB, run `opencode --version`, `opencode debug config`, and `opencode debug agents` from the updated checkout. Record exact version, loaded agents, selected model and expected winning rules on the cases listed above. Capture only redacted evidence. Run `bun run typecheck`, `bun run test`, `bun run check-package`; expect green. Stage only Files paths and commit `feat: move the checkout and agent policies to OpenCode two`.
