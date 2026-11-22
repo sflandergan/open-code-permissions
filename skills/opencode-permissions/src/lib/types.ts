@@ -2,90 +2,119 @@
 
 import type { AbsolutePath } from "./absolute-path"
 
-/** Permission actions OpenCode accepts, in the order error messages list them. */
-export const PERMISSION_ACTIONS = ["allow", "ask", "deny"] as const
+/**
+ * Permission effects OpenCode accepts, in the order error messages list them.
+ */
+export const PERMISSION_EFFECTS = ["allow", "deny", "ask"] as const
 
-/** One action OpenCode accepts for a permission rule. */
-export type PermissionAction = (typeof PERMISSION_ACTIONS)[number]
+/** One effect OpenCode accepts for a permission rule. */
+export type PermissionEffect = (typeof PERMISSION_EFFECTS)[number]
 
 /**
- * Reports whether `value` is one of the runtime's permission actions without
+ * Report whether `value` is one of the runtime's permission effects without
  * assuming its type.
  */
-export function isPermissionAction(value: unknown): value is PermissionAction {
-  return typeof value === "string" && PERMISSION_ACTIONS.some((action) => action === value)
+export function isPermissionEffect(value: unknown): value is PermissionEffect {
+  return typeof value === "string" && PERMISSION_EFFECTS.some((effect) => effect === value)
 }
 
-/** Native/custom classification the runtime exposes for an agent, null when absent. */
-export type AgentStatus = "native" | "custom" | null
+/** Runtime mode values an agent can carry. */
+const AGENT_MODES = ["primary", "subagent", "all"] as const
 
-/** Layer a permission rule is attributed to; external rules have no repository source. */
-export type Scope = "shared" | "agent" | "external"
+/** One agent mode the runtime reports. */
+export type AgentMode = (typeof AGENT_MODES)[number]
 
-/** One resolved permission rule tuple. */
-export interface PermissionRule {
-  permission: string
-  pattern: string
+/**
+ * Report whether `value` is one of the runtime's agent modes.
+ */
+export function isAgentMode(value: unknown): value is AgentMode {
+  return typeof value === "string" && AGENT_MODES.some((mode) => mode === value)
+}
+
+/** The modes the runtime reports, in the order error messages list them. */
+export const AGENT_MODE_VALUES = AGENT_MODES
+
+/** One ordered permission rule as the runtime reports it. */
+export interface RuntimeRule {
   action: string
+  resource: string
+  effect: PermissionEffect
 }
 
-/** One enabled agent as reported by the runtime inventory. */
-export interface AgentListEntry {
+/** One agent as `debug agents` reports it. */
+export interface RuntimeAgent {
+  id: string
   name: string
-  mode: string
-  rules: PermissionRule[]
+  mode: AgentMode
+  hidden: boolean
+  permissions: RuntimeRule[]
 }
 
-/** Merged runtime configuration with optional permission and agent sections. */
-export interface ResolvedConfig {
-  permission?: Record<string, unknown>
-  agent?: Record<string, unknown>
+/** One agent declaration inside a config document, restricted to the fields the report consumes. */
+export interface ConfigAgentDeclaration {
+  disabled?: boolean
+  permissions: RuntimeRule[]
 }
 
-/** One agent's resolved configuration as reported by the runtime. */
-export interface ResolvedAgentConfig {
-  name: string
-  mode: string
-  native?: boolean
-  permission: PermissionRule[]
+/** One document entry of `debug config` with the rule sections the report consumes. */
+export interface ConfigDocumentEntry {
+  type: "document"
+  path: string | null
+  permissions: RuntimeRule[]
+  agents: Record<string, ConfigAgentDeclaration>
 }
+
+/** One directory entry of `debug config`; agent definition files are discovered at its position. */
+export interface ConfigDirectoryEntry {
+  type: "directory"
+  path: string
+}
+
+/** One entry of the ordered `debug config` output. */
+export type ConfigEntry = ConfigDocumentEntry | ConfigDirectoryEntry
 
 /** Read-only adapter over the installed OpenCode CLI. */
 export interface OpenCodeRuntime {
-  listAgents(cwd: string): Promise<AgentListEntry[]>
-  readResolvedConfig(cwd: string): Promise<ResolvedConfig>
-  readResolvedAgentConfig(name: string, cwd: string): Promise<ResolvedAgentConfig>
+  /** Read the ordered agent inventory of `opencode debug agents`. */
+  readAgentInventory(cwd: string): Promise<RuntimeAgent[]>
+  /** Read the ordered config entries of `opencode debug config`. */
+  readConfigEntries(cwd: string): Promise<ConfigEntry[]>
 }
 
-/** Enabled-agent inventory report; each entry carries only name, mode, and status. */
-export interface AgentListReport {
-  agents: Array<{ name: string; mode: string; status: AgentStatus }>
+/** One inventory entry of the `list-agents` report. */
+export interface AgentListEntry {
+  id: string
+  name: string
+  mode: AgentMode
+  hidden: boolean
 }
+
+/** Enabled-agent inventory report. */
+export interface AgentListReport {
+  agents: AgentListEntry[]
+}
+
+/** Scope a rule origin is reported with. */
+export type RuleOriginScope = "shared" | "agent" | "unknown"
 
 /** Effective origin of one resolved rule. */
 export interface RuleOrigin {
-  scope: Scope
+  scope: RuleOriginScope
   source: string | null
 }
 
-/** One overridden declaration source in a rule's override chain. */
-export interface RuleOverride {
-  scope: "shared" | "agent"
-  source: string
-}
-
-/** One resolved rule with its position, effective origin, and known overrides. */
-export interface EffectiveRule extends PermissionRule {
+/** One resolved rule with its runtime position and verified effective origin. */
+export interface EffectiveRule extends RuntimeRule {
   position: number
   origin: RuleOrigin
-  overrides: RuleOverride[]
 }
 
 /** One agent's complete effective permission policy. */
 export interface EffectiveAgent {
+  id: string
   name: string
-  mode: string
-  status: AgentStatus
+  mode: AgentMode
+  hidden: boolean
   rules: EffectiveRule[]
 }
 
@@ -100,32 +129,3 @@ export interface InspectArgs {
   agent: string | null
   json: boolean
 }
-
-/** One existing repository configuration file with its parsed value. */
-export interface RepositoryConfig {
-  /** Repository-relative path printed as a rule origin, for example `opencode.json`. */
-  relativePath: string
-  /** Absolute path of the file that was read. */
-  absolutePath: AbsolutePath
-  value: Record<string, unknown>
-}
-
-/** One permission declaration converted to a rule tuple. */
-export interface DeclarationTuple {
-  permission: string
-  pattern: string
-  action: string
-}
-
-/**
- * One effective permission: a repository declaration tuple that survived
- * config-layer merging, with its surviving origin and the earlier declaration
- * sources it overrode in application order.
- */
-export interface EffectivePermission extends DeclarationTuple {
-  origin: { scope: "shared" | "agent"; source: string }
-  overrides: RuleOverride[]
-}
-
-/** Parsed agent frontmatter permission map: scalar actions or nested pattern maps. */
-export type PermissionDeclarations = Record<string, string | Record<string, string>>

@@ -11,7 +11,8 @@ skills/opencode-permission-optimizer/
 ├── SKILL.md
 ├── references/
 │   ├── native-roles.md
-│   └── opencode-permission-model.md
+│   ├── opencode-permission-model.md
+│   └── webfetch-trust-scopes.md
 ├── scripts/
 │   ├── agent-permission-report.sh
 │   └── list-agents.sh
@@ -21,6 +22,7 @@ skills/opencode-permission-optimizer/
 │       ├── absolute-path.ts
 │       ├── error-detail.ts
 │       ├── read-observations.ts
+│       ├── requested-url-matches.ts
 │       └── repository-identity.ts
 └── test/
     ├── fixtures/
@@ -28,15 +30,17 @@ skills/opencode-permission-optimizer/
     ├── lib/
     │   ├── absolute-path.test.ts
     │   ├── read-observations.test.ts
+    │   ├── requested-url-matches.test.ts
     │   └── repository-identity.test.ts
     └── agent-permission-report.test.ts
 ```
 
 - `SKILL.md` — the executable advisory workflow.
-- `references/opencode-permission-model.md` — `external_directory` and Bash path semantics, loaded only for targets outside the project.
+- `references/opencode-permission-model.md` — `external_directory` and `shell` path semantics, loaded only for targets outside the project.
 - `references/native-roles.md` — role guidance for permission-relevant native agents.
+- `references/webfetch-trust-scopes.md` — the URL scopes webfetch evidence is grouped into and the hosts without a supported boundary.
 - `scripts/` — the two command wrappers.
-- `src/` — the agent permission report script and its supporting modules.
+- `src/` — the agent permission report script and its supporting modules; `requested-url-matches.ts` groups successful webfetch approvals into the safe scopes the trust reference defines.
 - `test/` — the focused tests, fixtures, and helpers; tests mirror `src/` (`test/lib/` covers `src/lib/`).
 
 The package runs from its own files and the sibling `opencode-permissions` inspector; it does not require any repository document.
@@ -63,18 +67,19 @@ Both commands accept `--help`/`-h`, which prints usage to stdout and exits 0 wit
 
 ## Report JSON
 
-`summaryVersion: 1`, with:
+`summaryVersion: 2`, with:
 
 - `generatedAt` and the requested window, capped at the 30-day retention.
 - `databaseState` and `schemaVersion`.
 - `repository.identity` and `repository.worktree`.
-- `agent.name`, `agent.mode`, and `agent.status`.
-- `counts`: `observations`, `approvals`, `rejections`, `unresolved`, and `distinctSessions`.
-- `effectivePolicy.rules`: the complete ordered effective policy from runtime inspection, each rule carrying permission, pattern, action, position, origin, and overrides.
-- `inputs`: flat requested-pattern facts with permission, request, decision, session, activity, and worktree fields.
+- `agent.id`, `agent.name`, and `agent.mode`, in the runtime's own terms.
+- `counts`: `observations`, `approvals`, `approvalsBySource`, `qualifyingApprovalsBySource`, `rejections`, `unresolved`, and `distinctSessions`, each approval count broken down by the OpenCode major version that recorded it.
+- `effectivePolicy.rules`: the complete ordered effective policy from runtime inspection, each rule carrying `action`, `resource`, `effect`, `position`, and a single verified `origin`.
+- `resources`: flat requested-resource facts with `action`, `resource`, request, decision, session, activity, and worktree fields.
+- `webfetchRequestedUrlMatches`: for every scope with at least two distinct successful 2.x `once`-approved URLs, the scope (`origin` or `github-owner`), the exact `proposedPattern`, the recorded `requestedUrls`, and the distinct count. The scopes and their withheld hosts are defined in `references/webfetch-trust-scopes.md`; a match is evidence for the advisory workflow, not a recommendation.
 
-Approvals count only successful `once`/`always` observations with a known observation origin; direct rejections and unresolved observations count separately and derived decisions add only to request counts.
-A missing database yields a valid empty report: zero counts, empty `inputs`, `schemaVersion: null`, `effectivePolicy: null`, and null agent mode and status.
+Approvals count reported `once`/`always` outcomes whatever the completion; `qualifyingApprovalsBySource` additionally requires successful completion, a known repository identity, and a known agent, and `successfulOnceApprovalsBySource` narrows that to `once` replies. Legacy derived outcomes add only to request counts and stay visible separately, and one release ships the recorder and both skills as a compatible unit.
+A missing database yields a valid empty report: zero counts, empty `resources`, empty `webfetchRequestedUrlMatches`, `schemaVersion: null`, `effectivePolicy: null`, and null agent display fields.
 An incompatible schema or a failed runtime policy inspection stops without producing a report file.
 
 ## Database and policy access

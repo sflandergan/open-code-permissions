@@ -14,6 +14,7 @@ import type { ObservationDatabaseState } from "./lib/read-observations"
 import { toAbsolutePath } from "./lib/absolute-path"
 import type { AbsolutePath } from "./lib/absolute-path"
 import { readFailureDetail } from "./lib/error-detail"
+import { requestedUrlMatchesFor } from "./lib/requested-url-matches"
 import {
   formatRepositoryIdentity,
   resolveRepositoryIdentityForWorktree,
@@ -69,9 +70,10 @@ interface ReportBase {
 type ReportBaseRequest = Pick<AgentPermissionReportRequest, "agent" | "workingDirectory" | "now" | "days">
 
 interface InspectorAgent {
+  id: string
   name: string
-  mode: string | null
-  status: string | null
+  mode: string
+  hidden: boolean
   rules: unknown
 }
 
@@ -130,10 +132,13 @@ export function parseArgs(argv: string[]): { agent: string; days: number | null 
  * Build the complete agent permission report for one agent. The database
  * opens read-only; a missing database yields a valid empty report. An
  * incompatible schema throws `incompatible schema: expected <n>, found <n>`
- * naming both versions. The inspector runs twice (list-agents, show-effective)
- * unless the database is missing; any inspector failure stops the report
- * because policy coverage is unknown. An available database is closed in a
- * `finally`.
+ * naming both versions. The report carries the retention-window counts by
+ * recording major version, the agent's requested resources under the native
+ * field names, the webfetch URL matches produced from once-approval
+ * evidence, and the inspected effective policy. The inspector runs twice
+ * (list-agents, show-effective) unless the database is missing; any
+ * inspector failure stops the report because policy coverage is unknown. An
+ * available database is closed in a `finally`.
  */
 export function buildAgentPermissionReport(input: AgentPermissionReportRequest): Record<string, unknown> {
   const {
@@ -161,10 +166,10 @@ function buildReportBase({ agent, workingDirectory, now, days }: ReportBaseReque
     to: generatedAt,
   }
   const base = {
-    summaryVersion: 1,
+    summaryVersion: 2,
     generatedAt,
     repository,
-    agent: { name: agent, mode: null, status: null },
+    agent: { id: agent, name: null, mode: null },
     retainedInterval,
   }
   return { base, repository, retainedInterval }
@@ -175,8 +180,11 @@ function buildDatabaseReport({ opened, ...context }: DatabaseReportContext): Rec
     return buildMissingDatabaseReport(context.base)
   }
   if (opened.state === "incompatible") {
+    const found = opened.foundSchemaVersion ?? "unknown"
     throw new Error(
-      `incompatible schema: expected ${opened.schemaVersion}, found ${opened.foundSchemaVersion ?? "unknown"}`,
+      `incompatible schema: expected ${opened.schemaVersion}, found ${found}; ` +
+        `when the found version is older, start the upgraded permission-optimizer plugin to migrate this history, ` +
+        `and when it is newer, update the opencode-permission-optimizer skill`,
     )
   }
   return buildAvailableDatabaseReport({ ...context, opened })
@@ -187,9 +195,20 @@ function buildMissingDatabaseReport(base: Record<string, unknown>): Record<strin
     ...base,
     databaseState: "missing",
     schemaVersion: null,
-    counts: { observations: 0, approvals: 0, rejections: 0, unresolved: 0, distinctSessions: 0 },
+    counts: {
+      observations: 0,
+      approvals: 0,
+      approvalsBySource: { "1": 0, "2": 0 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 0 },
+      rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
+      unresolved: 0,
+      distinctSessions: 0,
+    },
     effectivePolicy: null,
-    inputs: [],
+    resources: [],
+    webfetchRequestedUrlMatches: [],
   }
 }
 
@@ -217,19 +236,44 @@ function buildAvailableDatabaseReport({
       ...base,
       databaseState: "available",
       schemaVersion: opened.schemaVersion,
-      agent: { name: matched.name, mode: matched.mode, status: matched.status ?? null },
+      agent: { id: matched.id, name: matched.name, mode: matched.mode },
       counts: decisionHistory.counts,
       effectivePolicy: { rules: policyEntry.rules },
-      inputs: decisionHistory.inputs,
+      resources: decisionHistory.inputs.map(toResourceSummary),
+      webfetchRequestedUrlMatches: requestedUrlMatchesFor(decisionHistory.inputs),
     }
   } finally {
     opened.db.close()
   }
 }
 
-function findInspectorAgent(report: unknown, agent: string, label: string): InspectorAgent {
-  const matched = readInspectorAgents(report).find((entry) => entry.name === agent)
-  if (matched === undefined) throw new Error(`agent "${agent}" not found in the ${label}`)
+/**
+ * Rename one history resource summary onto the native report field names
+ * without touching its counts.
+ */
+function toResourceSummary(input: ReturnType<typeof readPermissionDecisionHistory>["inputs"][number]): Record<string, unknown> {
+  return {
+    action: input.permission,
+    resource: input.input,
+    requests: input.requests,
+    approvals: input.approvals,
+    approvalsBySource: input.approvalsBySource,
+    qualifyingApprovalsBySource: input.qualifyingApprovalsBySource,
+    successfulOnceApprovalsBySource: input.successfulOnceApprovalsBySource,
+    rejections: input.rejections,
+    derivedApprovals: input.derivedApprovals,
+    derivedRejections: input.derivedRejections,
+    unresolved: input.unresolved,
+    distinctSessions: input.distinctSessions,
+    firstActivityAt: input.firstActivityAt,
+    lastActivityAt: input.lastActivityAt,
+    worktrees: input.worktrees,
+  }
+}
+
+function findInspectorAgent(report: unknown, agentId: string, label: string): InspectorAgent {
+  const matched = readInspectorAgents(report).find((entry) => entry.id === agentId)
+  if (matched === undefined) throw new Error(`agent "${agentId}" not found in the ${label}`)
   return matched
 }
 
@@ -240,13 +284,14 @@ function readInspectorAgents(report: unknown): InspectorAgent[] {
 }
 
 function readInspectorAgent(value: unknown): InspectorAgent {
-  if (!isRecord(value) || typeof value.name !== "string") {
-    throw new Error("inspector returned an agent entry without a name")
+  if (!isRecord(value) || typeof value.id !== "string") {
+    throw new Error("inspector returned an agent entry without an id")
   }
   return {
-    name: value.name,
-    mode: typeof value.mode === "string" ? value.mode : null,
-    status: typeof value.status === "string" ? value.status : null,
+    id: value.id,
+    name: typeof value.name === "string" ? value.name : "",
+    mode: typeof value.mode === "string" ? value.mode : "",
+    hidden: typeof value.hidden === "boolean" ? value.hidden : false,
     rules: value.rules,
   }
 }

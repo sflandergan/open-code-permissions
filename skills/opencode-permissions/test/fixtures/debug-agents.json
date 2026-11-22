@@ -1,0 +1,161 @@
+[
+  {
+    "id": "build",
+    "name": "Build",
+    "mode": "primary",
+    "hidden": false,
+    "description": "The default agent. Executes tools based on configured permissions.",
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "question", "resource": "*", "effect": "allow" },
+      { "action": "webfetch", "resource": "example.test/*", "effect": "deny" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "ask" },
+      { "action": "shell", "resource": "git status", "effect": "allow" }
+    ]
+  },
+  {
+    "id": "compaction",
+    "name": "Compaction",
+    "mode": "primary",
+    "hidden": true,
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "webfetch", "resource": "example.test/*", "effect": "deny" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "ask" }
+    ]
+  },
+  {
+    "id": "explore",
+    "name": "Explore",
+    "mode": "subagent",
+    "hidden": false,
+    "model": { "providerID": "openai", "model": "gpt-5.6-sol" },
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "*", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "allow" },
+      { "action": "grep", "resource": "*", "effect": "allow" },
+      { "action": "glob", "resource": "*", "effect": "allow" },
+      { "action": "webfetch", "resource": "*", "effect": "allow" },
+      { "action": "websearch", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "subagent", "resource": "*", "effect": "deny" },
+      { "action": "external_directory", "resource": "*", "effect": "allow" },
+      { "action": "webfetch", "resource": "example.test/*", "effect": "deny" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "ask" }
+    ]
+  },
+  {
+    "id": "general",
+    "name": "General",
+    "mode": "subagent",
+    "hidden": false,
+    "description": "General-purpose agent for researching complex questions and executing multi-step tasks. Use this when you need to execute multiple units of work in parallel.",
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "question", "resource": "*", "effect": "deny" },
+      { "action": "subagent", "resource": "*", "effect": "deny" },
+      { "action": "webfetch", "resource": "example.test/*", "effect": "deny" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "ask" }
+    ]
+  },
+  {
+    "id": "ghost",
+    "name": "ghost",
+    "mode": "all",
+    "hidden": true,
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "webfetch", "resource": "example.test/*", "effect": "deny" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "ask" },
+      { "action": "read", "resource": "opencode.json", "effect": "allow" },
+      { "action": "subagent", "resource": "*", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "question", "resource": "*", "effect": "allow" },
+      { "action": "subagent", "resource": "*", "effect": "deny" },
+      { "action": "skill", "resource": "*", "effect": "deny" },
+      { "action": "skill", "resource": "legacy-skill", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "allow" },
+      { "action": "read", "resource": "*", "effect": "deny" },
+      { "action": "read", "resource": "opencode.json", "effect": "allow" },
+      { "action": "read", "resource": ".opencode/agents/*.md", "effect": "allow" },
+      { "action": "read", "resource": ".agents/skills/opencode-permission-optimizer/**", "effect": "allow" },
+      { "action": "shell", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": ">*", "effect": "deny" },
+      { "action": "shell", "resource": "*<*", "effect": "deny" },
+      { "action": "shell", "resource": "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *", "effect": "allow" },
+      { "action": "shell", "resource": "ls", "effect": "allow" },
+      { "action": "shell", "resource": "echo *", "effect": "allow" }
+    ]
+  },
+  {
+    "id": "summary",
+    "name": "Summary",
+    "mode": "primary",
+    "hidden": true,
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "*", "resource": "*", "effect": "deny" },
+      { "action": "webfetch", "resource": "example.test/*", "effect": "deny" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "ask" }
+    ]
+  },
+  {
+    "id": "title",
+    "name": "Title",
+    "mode": "primary",
+    "hidden": true,
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" },
+      { "action": "*", "resource": "*", "effect": "deny" },
+      { "action": "webfetch", "resource": "example.test/*", "effect": "deny" },
+      { "action": "read", "resource": "*", "effect": "allow" },
+      { "action": "skill", "resource": "opencode-permission-optimizer", "effect": "deny" },
+      { "action": "edit", "resource": "*", "effect": "deny" },
+      { "action": "shell", "resource": "*", "effect": "ask" }
+    ]
+  }
+]

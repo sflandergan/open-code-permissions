@@ -2,11 +2,10 @@ import { execFileSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-const ENTRY_PATH = ".opencode/plugins/permission-optimizer.ts"
+const ENTRY_PATH = ".opencode/plugins/permission-optimizer/index.ts"
 const SCHEMA_PATH = ".opencode/plugins/permission-optimizer/schema.sql"
 const MIGRATIONS_PREFIX = ".opencode/plugins/permission-optimizer/migrations/"
 const REQUIRED_DECLARATIONS: readonly string[] = [
-  ENTRY_PATH,
   ".opencode/plugins/permission-optimizer",
   "!.opencode/plugins/permission-optimizer/test/",
   "README.md",

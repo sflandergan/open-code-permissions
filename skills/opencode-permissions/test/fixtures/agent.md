@@ -21,7 +21,7 @@ permission:
     ".agents/skills/opencode-permission-optimizer/**": allow
   bash:
     "*": deny
-    "*>*": deny
+    ">*": deny
     "*<*": deny
     "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *": allow
     "ls": allow

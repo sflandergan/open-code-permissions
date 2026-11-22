@@ -217,7 +217,13 @@ test("exports the requested window for an absent database and prints only its pa
     const summary: unknown = JSON.parse(readFileSync(outputPath, "utf8"))
     const generatedAt = (summary as { generatedAt: string }).generatedAt
     const retainedInterval = (summary as { retainedInterval: { from: string; to: string } }).retainedInterval
-    expect(summary).toMatchObject({ summaryVersion: 1, databaseState: "missing", effectivePolicy: null, inputs: [] })
+    expect(summary).toMatchObject({
+      summaryVersion: 2,
+      databaseState: "missing",
+      effectivePolicy: null,
+      resources: [],
+      webfetchRequestedUrlMatches: [],
+    })
     expect(Date.parse(retainedInterval.to) - Date.parse(retainedInterval.from)).toEqual(7 * 86400000)
     expect(retainedInterval.to).toEqual(generatedAt)
     const outputFiles = readdirSync(join(cwd, ".temp"))
@@ -260,12 +266,12 @@ function fakeInspector(invocations: InspectorRequest[]): (args: InspectorRequest
   return (args) => {
     invocations.push(args)
     if (args.form === "list-agents") {
-      return { agents: [{ name: "implement", mode: "all", status: "custom" }] }
+      return { agents: [{ id: "implement", name: "implement", mode: "all", hidden: false }] }
     }
     return {
       agents: [{
-        name: "implement", mode: "all", status: "custom",
-        rules: [{ permission: "bash", pattern: "*", action: "ask", position: 0, origin: { scope: "shared", source: "opencode.json" }, overrides: [] }],
+        id: "implement", name: "implement", mode: "all", hidden: false,
+        rules: [{ action: "shell", resource: "*", effect: "ask", position: 0, origin: { scope: "shared", source: "opencode.json" } }],
       }],
     }
   }
@@ -326,37 +332,84 @@ test("exports repository, agent, counts, policy, and requested patterns for an a
       agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, databasePath: dbPath,
       invokeInspector: fakeInspector(invocations),
     })
-    expect(summary.summaryVersion).toEqual(1)
+    expect(summary.summaryVersion).toEqual(2)
     expect(summary.databaseState).toEqual("available")
     expect(summary.schemaVersion).toEqual(SCHEMA_VERSION)
     expect(summary.repository).toEqual({ identity: IDENTITY, worktree: cwd })
-    expect(summary.agent).toEqual({ name: "implement", mode: "all", status: "custom" })
-    expect(summary.counts).toEqual({ observations: 1, approvals: 1, rejections: 0, unresolved: 0, distinctSessions: 1 })
-    expect(summary.inputs).toEqual([{
-      permission: "bash",
-      input: "git status",
+    expect(summary.agent).toEqual({ id: "implement", name: "implement", mode: "all" })
+    expect(summary.counts).toEqual({
+      observations: 1,
+      approvals: 1,
+      approvalsBySource: { "1": 0, "2": 1 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 1 },
+      rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
+      unresolved: 0,
+      distinctSessions: 1,
+    })
+    expect(summary.resources).toEqual([{
+      action: "bash",
+      resource: "git status",
       requests: 1,
       approvals: 1,
+      approvalsBySource: { "1": 0, "2": 1 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 1 },
+      successfulOnceApprovalsBySource: { "1": 0, "2": 1 },
       rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
       unresolved: 0,
       distinctSessions: 1,
       firstActivityAt: "2026-09-01T08:00:02.000Z",
       lastActivityAt: "2026-09-01T08:00:02.000Z",
       worktrees: [cwd],
     }])
+    expect(summary.webfetchRequestedUrlMatches).toEqual([])
     expect(summary.effectivePolicy).toEqual({
       rules: [{
-        permission: "bash",
-        pattern: "*",
-        action: "ask",
+        action: "shell",
+        resource: "*",
+        effect: "ask",
         position: 0,
         origin: { scope: "shared", source: "opencode.json" },
-        overrides: [],
       }],
     })
     expect(invocations).toHaveLength(2)
     expect(invocations[0]).toEqual({ form: "list-agents" })
     expect(invocations[1]).toEqual({ form: "show-effective", agent: "implement" })
+  } finally {
+    cleanup()
+  }
+})
+
+test("carries webfetch once-approval evidence from a real database into the report matches", () => {
+  const { cwd, cleanup } = createTestContext()
+  try {
+    const dbPath = createObservationDatabase(cwd)
+    insertObservation(dbPath, {
+      requestId: "r1", sessionId: "s1", permission: "webfetch",
+      patterns: ["https://example.test/docs/guide"],
+      worktree: cwd, askedAt: "2026-09-01T08:00:00.000Z", decidedAt: "2026-09-01T08:00:01.000Z", completedAt: "2026-09-01T08:00:02.000Z",
+    })
+    insertObservation(dbPath, {
+      requestId: "r2", sessionId: "s1", permission: "webfetch",
+      patterns: ["https://example.test/api/reference"],
+      worktree: cwd, askedAt: "2026-09-01T08:30:00.000Z", decidedAt: "2026-09-01T08:30:01.000Z", completedAt: "2026-09-01T08:30:02.000Z",
+    })
+    const summary = buildAgentPermissionReport({
+      agent: "implement", workingDirectory: toAbsolutePath(cwd, "working directory"), now: NOW, databasePath: dbPath,
+      invokeInspector: fakeInspector([]),
+    })
+
+    expect(summary.webfetchRequestedUrlMatches).toEqual([
+      {
+        scope: { kind: "origin", origin: "https://example.test" },
+        proposedPattern: "https://example.test/*",
+        requestedUrls: ["https://example.test/api/reference", "https://example.test/docs/guide"],
+        distinctRequestedUrlCount: 2,
+      },
+    ])
   } finally {
     cleanup()
   }
@@ -371,8 +424,19 @@ test("reports an absent database as an empty summary with no policy or requested
     })
     expect(summary.databaseState).toEqual("missing")
     expect(summary.schemaVersion).toEqual(null)
-    expect(summary.counts).toEqual({ observations: 0, approvals: 0, rejections: 0, unresolved: 0, distinctSessions: 0 })
-    expect(summary.inputs).toEqual([])
+    expect(summary.counts).toEqual({
+      observations: 0,
+      approvals: 0,
+      approvalsBySource: { "1": 0, "2": 0 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 0 },
+      rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
+      unresolved: 0,
+      distinctSessions: 0,
+    })
+    expect(summary.resources).toEqual([])
+    expect(summary.webfetchRequestedUrlMatches).toEqual([])
     expect(summary.effectivePolicy).toEqual(null)
   } finally {
     cleanup()

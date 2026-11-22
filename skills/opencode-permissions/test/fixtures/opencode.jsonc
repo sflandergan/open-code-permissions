@@ -1,0 +1,6 @@
+// Recorded shared policy expressed in the legacy v1 permission form.
+{
+  "permission": {
+    "bash": { "*": "ask", },
+  },
+}

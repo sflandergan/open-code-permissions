@@ -27,11 +27,12 @@ const TEMP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..",
 mkdirSync(TEMP_DIR, { recursive: true })
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures")
-const AGENT_LIST_FIXTURE = readFileSync(join(fixturesDir, "agent-list.txt"), "utf8")
 const DEBUG_CONFIG_FIXTURE = readFileSync(join(fixturesDir, "debug-config.json"), "utf8")
-const DEBUG_AGENT_FIXTURE = readFileSync(join(fixturesDir, "debug-agent.json"), "utf8")
+const DEBUG_AGENTS_FIXTURE = readFileSync(join(fixturesDir, "debug-agents.json"), "utf8")
 const OPENCODE_JSON_FIXTURE = readFileSync(join(fixturesDir, "opencode.json"), "utf8")
+const OPENCODE_JSONC_FIXTURE = readFileSync(join(fixturesDir, "opencode.jsonc"), "utf8")
 const AGENT_MD_FIXTURE = readFileSync(join(fixturesDir, "agent.md"), "utf8")
+const MODES_BUILD_MD_FIXTURE = readFileSync(join(fixturesDir, "modes-build.md"), "utf8")
 
 /** A hermetic wrapper sandbox: fixture worktree, fake executables, and copied skill. */
 interface Sandbox {
@@ -52,9 +53,10 @@ interface ProcessResult {
 
 /** One agent entry as rendered by the list command. */
 interface ListedAgent {
+  id: string
   name: string
   mode: string
-  status: string
+  hidden: boolean
 }
 
 /** A rule origin as rendered by the effective-policy command. */
@@ -70,17 +72,17 @@ interface ListReport {
 
 /** The effective-policy report read back from the wrapper output file. */
 interface EffectiveReport {
-  agents: Array<{ name: string; rules: Array<{ origin: ReportedOrigin }> }>
+  agents: Array<{ id: string; rules: Array<{ origin: ReportedOrigin }> }>
 }
 
 /**
  * Copy the fake `git` executable, the `opencode` launcher, and the fake
  * runtime script into the sandbox bin directory and write the runtime
- * fixtures they serve. The launcher supplies the fake's argv log path and
- * fixture directory from its own location because the inspector sanitizes the
- * environment; the fake opencode then answers `agent list`, `debug config`,
- * and `debug agent <name>` with the captured fixture world, and any
- * `--version` probe fails because the inspector must never ask for one.
+ * fixtures they serve. The launcher supplies the fake's argv log path,
+ * fixture directory, and resolved repository root from its own location
+ * because the inspector sanitizes the environment; the fake opencode then
+ * answers `debug agents` and `debug config` with the recorded fixture
+ * world, and any other invocation fails.
  */
 function createFakeExecutables(binDir: string): void {
   const gitPath = join(binDir, "git")
@@ -95,9 +97,9 @@ function createFakeExecutables(binDir: string): void {
   cpSync(join(fixturesDir, "fake-opencode-launcher.sh"), opencodePath)
   chmodSync(opencodePath, 0o755)
 
-  writeFileSync(join(binDir, "agent-list.txt"), AGENT_LIST_FIXTURE)
   writeFileSync(join(binDir, "debug-config.json"), DEBUG_CONFIG_FIXTURE)
-  writeFileSync(join(binDir, "debug-agent.json"), DEBUG_AGENT_FIXTURE)
+  writeFileSync(join(binDir, "debug-agents.json"), DEBUG_AGENTS_FIXTURE)
+  rmSync(join(binDir, "opencode-argv.log"), { force: true })
 }
 
 /**
@@ -112,10 +114,13 @@ async function createSandbox(location: "local" | "global"): Promise<Sandbox> {
   const worktree = join(base, "worktree with space")
   const fakeBin = join(base, "fake-bin")
   mkdirSync(join(worktree, ".opencode", "agents"), { recursive: true })
+  mkdirSync(join(worktree, ".opencode", "modes"), { recursive: true })
   mkdirSync(join(worktree, ".git"))
   mkdirSync(fakeBin, { recursive: true })
   writeFileSync(join(worktree, "opencode.json"), OPENCODE_JSON_FIXTURE)
+  writeFileSync(join(worktree, "opencode.jsonc"), OPENCODE_JSONC_FIXTURE)
   writeFileSync(join(worktree, ".opencode", "agents", "ghost.md"), AGENT_MD_FIXTURE)
+  writeFileSync(join(worktree, ".opencode", "modes", "build.md"), MODES_BUILD_MD_FIXTURE)
   createFakeExecutables(fakeBin)
 
   const skillDir =
@@ -214,9 +219,27 @@ function readInspectOutput(result: ProcessResult, worktreeRoot: string): unknown
   }
 }
 
-function assertListEntryShape(listReport: ListReport, name: string): void {
-  const agent = listReport.agents.find((entry) => entry.name === name)
-  expect(Object.keys(agent ?? {}).sort()).toEqual(["mode", "name", "status"])
+function readArgvLog(sandbox: Pick<Sandbox, "fakeBin">): string[][] {
+  return readFileSync(join(sandbox.fakeBin, "opencode-argv.log"), "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as string[])
+}
+
+/**
+ * Assert which runtime commands the wrapper's invocations ran, without
+ * depending on the interleaving of the two parallel debug commands.
+ */
+function expectArgvCalls(sandbox: Pick<Sandbox, "fakeBin">, expected: Record<string, number>): void {
+  const log = readArgvLog(sandbox)
+  const counts = new Map<string, number>()
+  for (const entry of log) counts.set(entry.join(" "), (counts.get(entry.join(" ")) ?? 0) + 1)
+  expect(Object.fromEntries(counts)).toEqual(expected)
+}
+
+function assertListEntryShape(listReport: ListReport, id: string): void {
+  const agent = listReport.agents.find((entry) => entry.id === id)
+  expect(Object.keys(agent ?? {}).sort()).toEqual(["hidden", "id", "mode", "name"])
 }
 
 function assertRuleOrigin(report: EffectiveReport, { scope, source }: ReportedOrigin): void {
@@ -237,17 +260,28 @@ test("a globally installed skill inspects the worktree it was invoked from", asy
     const listReport = readInspectOutput(listResult, sandbox.worktree) as ListReport
     assertListEntryShape(listReport, "ghost")
     assertListEntryShape(listReport, "explore")
+    expect(listReport.agents.map((agent) => agent.id)).toEqual([
+      "build",
+      "compaction",
+      "explore",
+      "general",
+      "ghost",
+      "summary",
+      "title",
+    ])
 
     const effectiveResult = await runWrapper(sandbox, ["show-effective", "ghost", "--json"], sandbox.worktree, env)
     expect(effectiveResult.code).toEqual(0)
     const report = readInspectOutput(effectiveResult, sandbox.worktree) as EffectiveReport
     expect(report.agents.length).toEqual(1)
+    expect(report.agents[0].id).toEqual("ghost")
     assertRuleOrigin(report, { scope: "shared", source: "opencode.json" })
+    assertRuleOrigin(report, { scope: "shared", source: "opencode.jsonc" })
     assertRuleOrigin(report, { scope: "agent", source: ".opencode/agents/ghost.md" })
-    assertRuleOrigin(report, { scope: "external", source: null })
+    assertRuleOrigin(report, { scope: "agent", source: "opencode.json" })
+    assertRuleOrigin(report, { scope: "unknown", source: null })
 
-    const argvLog = JSON.parse(readFileSync(join(sandbox.fakeBin, "opencode-argv.log"), "utf8")) as string[]
-    expect(argvLog).toEqual(["debug", "agent", "ghost"])
+    expectArgvCalls(sandbox, { "debug agents": 2, "debug config": 1 })
   } finally {
     sandbox.cleanup()
   }
@@ -418,8 +452,7 @@ test("arguments containing spaces or shell substitution reach the runtime as lit
 
     const ok = await runWrapper(sandbox, ["show-effective", "ghost"], sandbox.worktree, env)
     expect(ok.code).toEqual(0)
-    const argvLog = JSON.parse(readFileSync(join(sandbox.fakeBin, "opencode-argv.log"), "utf8")) as string[]
-    expect(argvLog).toEqual(["debug", "agent", "ghost"])
+    expectArgvCalls(sandbox, { "debug agents": 3, "debug config": 3 })
   } finally {
     sandbox.cleanup()
   }
@@ -452,10 +485,9 @@ test("a quoted wrapper path containing a space inspects the agent from a shell c
     const result = await runProcess(sandbox.bashPath, ["-c", command], sandbox.worktree, env)
     expect(result.code).toEqual(0)
     const report = readInspectOutput(result, sandbox.worktree) as EffectiveReport
-    expect(report.agents[0].name).toEqual("ghost")
+    expect(report.agents[0].id).toEqual("ghost")
     assertRuleOrigin(report, { scope: "agent", source: ".opencode/agents/ghost.md" })
-    const argvLog = JSON.parse(readFileSync(join(sandbox.fakeBin, "opencode-argv.log"), "utf8")) as string[]
-    expect(argvLog).toEqual(["debug", "agent", "ghost"])
+    expectArgvCalls(sandbox, { "debug agents": 1, "debug config": 1 })
 
     const splitCheck = await runProcess(
       sandbox.bashPath,

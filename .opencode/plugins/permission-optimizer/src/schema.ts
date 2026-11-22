@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
-/** Current schema version: requested patterns live in `requested_patterns`. */
-export const SCHEMA_VERSION = 4
+/** Current schema version: requested resources live in `requested_resources`. */
+export const SCHEMA_VERSION = 5
 
 /** Observation retention window in days from the last lifecycle activity. */
 export const RETENTION_DAYS = 30
@@ -12,6 +12,7 @@ const MIGRATION_STEPS = [
   { from: 1, to: 3, file: "001-v1-to-v3.sql" },
   { from: 2, to: 3, file: "002-v2-to-v3.sql" },
   { from: 3, to: 4, file: "003-v3-to-v4.sql" },
+  { from: 4, to: 5, file: "004-v4-to-v5.sql" },
 ] as const
 
 let cachedSql: string | null = null

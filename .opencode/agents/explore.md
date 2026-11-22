@@ -1,171 +1,469 @@
 ---
 description: Read-only repository investigator for focused codebase questions. Returns concise findings with file paths and line evidence.
 mode: subagent
-temperature: 0.1
-permission:
-  edit:
-    "*": deny
-  webfetch: ask
-  websearch: ask
-  task:
-    "*": deny
-  skill:
-    "*": deny
-    "context7-cli": allow
-    "github-pr-comments": allow
-  bash:
-    "*": deny
-    "ls": allow
-    "ls *": allow
-    "cat": allow
-    "cat *": allow
-    "head": allow
-    "head *": allow
-    "tail": allow
-    "tail *": allow
-    "find": allow
-    "find *": allow
-    "grep": allow
-    "grep *": allow
-    "rg": allow
-    "rg *": allow
-    "diff": allow
-    "diff *": allow
-    "echo": allow
-    "echo *": allow
-    "readlink": allow
-    "readlink *": allow
-    "wc": allow
-    "wc *": allow
-
-    "git status": allow
-    "git status *": allow
-    "git diff": allow
-    "git diff *": allow
-    "git log": allow
-    "git log *": allow
-    "git show": allow
-    "git show *": allow
-    "git grep": allow
-    "git grep *": allow
-    "git ls-files": allow
-    "git ls-files *": allow
-    "git ls-tree": allow
-    "git ls-tree *": allow
-    "git rev-parse": allow
-    "git rev-parse *": allow
-    "git merge-base": allow
-    "git merge-base *": allow
-    "git remote -v": allow
-
-    "ctx7 library *": allow
-    "ctx7 docs *": allow
-    "ctx7 setup *": ask
-    "ctx7 login *": ask
-    "ctx7 logout *": ask
-    "ctx7 skills *": ask
-    "npx ctx7@latest library *": allow
-    "npx ctx7@latest docs *": allow
-    "npx ctx7@* *": ask
-
-    "bash *scripts/fetch-pr-comments.sh": allow
-    "bash *scripts/fetch-pr-comments.sh *": allow
-
-    "*>*": ask
-    "ls *2>/dev/null": allow
-    "ls *2>&1": allow
-    "cat *2>/dev/null": allow
-    "find *2>/dev/null": allow
-    "grep *2>/dev/null": allow
-    "rg *2>/dev/null": allow
-    "head *2>/dev/null": allow
-    "git diff *2>/dev/null": allow
-    "git log *2>/dev/null": allow
-    "git show *2>/dev/null": allow
-    "git ls-files *2>/dev/null": allow
-    "git status *2>/dev/null": allow
-    "git branch --show-current 2>/dev/null": allow
-
-    "find *-delete*": deny
-    "find *-exec*": deny
-    "find *-ok*": deny
-    "find *-fprint*": deny
-    "find *-fls*": deny
-    "rg *--pre *": deny
-    "rg *--pre=*": deny
-    "rg *--hostname-bin *": deny
-    "rg *--hostname-bin=*": deny
-    "git diff *--ext-diff*": deny
-    "git diff *--textconv*": deny
-    "git diff *--output*": deny
-    "git log *--ext-diff*": deny
-    "git log *--textconv*": deny
-    "git log *--output*": deny
-    "git show *--ext-diff*": deny
-    "git show *--textconv*": deny
-    "git show *--output*": deny
-    "git grep *--open-files-in-pager*": deny
-    "git grep *--textconv*": deny
-    "git grep *-O *": deny
-    "node *": deny
-    "*<*": deny
-    "*>*..*": deny
-    "*>*~/*": deny
-    "*>*$*": deny
-    "*>*`*": deny
-    "bun --version": allow
-    "opencode --version": allow
-    "ctx7 setup": ask
-    "ctx7 login": ask
-    "ctx7 logout": ask
-    "npm install -g ctx7": ask
-    "npm install -g ctx7@*": ask
-    "bun --version 2>/dev/null": allow
-    "opencode --version 2>/dev/null": allow
-    "find *-fprintf*": deny
-    "git grep *-O=*": deny
-    "git remote -v >*": deny
-    "ls *>*>*": deny
-    "*>*/Applications/*": deny
-    "*>*/bin/*": deny
-    "*>*/cores/*": deny
-    "*>*/etc/*": deny
-    "*>*/home/*": deny
-    "*>*/Library/*": deny
-    "*>*/opt/*": deny
-    "*>*/private/*": deny
-    "*>*/sbin/*": deny
-    "*>*/System/*": deny
-    "*>*/Users/*": deny
-    "*>*/usr/*": deny
-    "*>*/var/*": deny
-    "*>*/Volumes/*": deny
-    "*>*/dev/a*": deny
-    "*>*/dev/b*": deny
-    "*>*/dev/c*": deny
-    "*>*/dev/d*": deny
-    "*>*/dev/e*": deny
-    "*>*/dev/f*": deny
-    "*>*/dev/g*": deny
-    "*>*/dev/h*": deny
-    "*>*/dev/i*": deny
-    "*>*/dev/j*": deny
-    "*>*/dev/k*": deny
-    "*>*/dev/l*": deny
-    "*>*/dev/m*": deny
-    "*>*/dev/o*": deny
-    "*>*/dev/p*": deny
-    "*>*/dev/q*": deny
-    "*>*/dev/r*": deny
-    "*>*/dev/s*": deny
-    "*>*/dev/t*": deny
-    "*>*/dev/u*": deny
-    "*>*/dev/v*": deny
-    "*>*/dev/w*": deny
-    "*>*/dev/x*": deny
-    "*>*/dev/y*": deny
-    "*>*/dev/z*": deny
-    "*>*/dev/nfsclnt*": deny
+permissions:
+  - action: "edit"
+    resource: "*"
+    effect: deny
+  - action: "webfetch"
+    resource: "*"
+    effect: ask
+  - action: "websearch"
+    resource: "*"
+    effect: ask
+  - action: "subagent"
+    resource: "*"
+    effect: deny
+  - action: "skill"
+    resource: "*"
+    effect: deny
+  - action: "skill"
+    resource: "context7-cli"
+    effect: allow
+  - action: "skill"
+    resource: "github-pr-comments"
+    effect: allow
+  - action: "shell"
+    resource: "*"
+    effect: deny
+  - action: "shell"
+    resource: "ls"
+    effect: allow
+  - action: "shell"
+    resource: "ls *"
+    effect: allow
+  - action: "shell"
+    resource: "cat"
+    effect: allow
+  - action: "shell"
+    resource: "cat *"
+    effect: allow
+  - action: "shell"
+    resource: "head"
+    effect: allow
+  - action: "shell"
+    resource: "head *"
+    effect: allow
+  - action: "shell"
+    resource: "tail"
+    effect: allow
+  - action: "shell"
+    resource: "tail *"
+    effect: allow
+  - action: "shell"
+    resource: "find"
+    effect: allow
+  - action: "shell"
+    resource: "find *"
+    effect: allow
+  - action: "shell"
+    resource: "grep"
+    effect: allow
+  - action: "shell"
+    resource: "grep *"
+    effect: allow
+  - action: "shell"
+    resource: "rg"
+    effect: allow
+  - action: "shell"
+    resource: "rg *"
+    effect: allow
+  - action: "shell"
+    resource: "diff"
+    effect: allow
+  - action: "shell"
+    resource: "diff *"
+    effect: allow
+  - action: "shell"
+    resource: "echo"
+    effect: allow
+  - action: "shell"
+    resource: "echo *"
+    effect: allow
+  - action: "shell"
+    resource: "readlink"
+    effect: allow
+  - action: "shell"
+    resource: "readlink *"
+    effect: allow
+  - action: "shell"
+    resource: "wc"
+    effect: allow
+  - action: "shell"
+    resource: "wc *"
+    effect: allow
+  - action: "shell"
+    resource: "git status"
+    effect: allow
+  - action: "shell"
+    resource: "git status *"
+    effect: allow
+  - action: "shell"
+    resource: "git diff"
+    effect: allow
+  - action: "shell"
+    resource: "git diff *"
+    effect: allow
+  - action: "shell"
+    resource: "git log"
+    effect: allow
+  - action: "shell"
+    resource: "git log *"
+    effect: allow
+  - action: "shell"
+    resource: "git show"
+    effect: allow
+  - action: "shell"
+    resource: "git show *"
+    effect: allow
+  - action: "shell"
+    resource: "git grep"
+    effect: allow
+  - action: "shell"
+    resource: "git grep *"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-files"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-files *"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-tree"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-tree *"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-parse"
+    effect: allow
+  - action: "shell"
+    resource: "git rev-parse *"
+    effect: allow
+  - action: "shell"
+    resource: "git merge-base"
+    effect: allow
+  - action: "shell"
+    resource: "git merge-base *"
+    effect: allow
+  - action: "shell"
+    resource: "git remote -v"
+    effect: allow
+  - action: "shell"
+    resource: "ctx7 library *"
+    effect: allow
+  - action: "shell"
+    resource: "ctx7 docs *"
+    effect: allow
+  - action: "shell"
+    resource: "ctx7 setup *"
+    effect: ask
+  - action: "shell"
+    resource: "ctx7 login *"
+    effect: ask
+  - action: "shell"
+    resource: "ctx7 logout *"
+    effect: ask
+  - action: "shell"
+    resource: "ctx7 skills *"
+    effect: ask
+  - action: "shell"
+    resource: "npx ctx7@latest library *"
+    effect: allow
+  - action: "shell"
+    resource: "npx ctx7@latest docs *"
+    effect: allow
+  - action: "shell"
+    resource: "npx ctx7@* *"
+    effect: ask
+  - action: "shell"
+    resource: "bash *scripts/fetch-pr-comments.sh"
+    effect: allow
+  - action: "shell"
+    resource: "bash *scripts/fetch-pr-comments.sh *"
+    effect: allow
+  - action: "shell"
+    resource: "*>*"
+    effect: ask
+  - action: "shell"
+    resource: "ls *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "ls *2>&1"
+    effect: allow
+  - action: "shell"
+    resource: "cat *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "find *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "grep *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "rg *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "head *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "git diff *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "git log *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "git show *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "git ls-files *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "git status *2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "git branch --show-current 2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "find *-delete*"
+    effect: deny
+  - action: "shell"
+    resource: "find *-exec*"
+    effect: deny
+  - action: "shell"
+    resource: "find *-ok*"
+    effect: deny
+  - action: "shell"
+    resource: "find *-fprint*"
+    effect: deny
+  - action: "shell"
+    resource: "find *-fls*"
+    effect: deny
+  - action: "shell"
+    resource: "rg *--pre *"
+    effect: deny
+  - action: "shell"
+    resource: "rg *--pre=*"
+    effect: deny
+  - action: "shell"
+    resource: "rg *--hostname-bin *"
+    effect: deny
+  - action: "shell"
+    resource: "rg *--hostname-bin=*"
+    effect: deny
+  - action: "shell"
+    resource: "git diff *--ext-diff*"
+    effect: deny
+  - action: "shell"
+    resource: "git diff *--textconv*"
+    effect: deny
+  - action: "shell"
+    resource: "git diff *--output*"
+    effect: deny
+  - action: "shell"
+    resource: "git log *--ext-diff*"
+    effect: deny
+  - action: "shell"
+    resource: "git log *--textconv*"
+    effect: deny
+  - action: "shell"
+    resource: "git log *--output*"
+    effect: deny
+  - action: "shell"
+    resource: "git show *--ext-diff*"
+    effect: deny
+  - action: "shell"
+    resource: "git show *--textconv*"
+    effect: deny
+  - action: "shell"
+    resource: "git show *--output*"
+    effect: deny
+  - action: "shell"
+    resource: "git grep *--open-files-in-pager*"
+    effect: deny
+  - action: "shell"
+    resource: "git grep *--textconv*"
+    effect: deny
+  - action: "shell"
+    resource: "git grep *-O *"
+    effect: deny
+  - action: "shell"
+    resource: "node *"
+    effect: deny
+  - action: "shell"
+    resource: "*<*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*..*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*~/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*$*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*`*"
+    effect: deny
+  - action: "shell"
+    resource: "bun --version"
+    effect: allow
+  - action: "shell"
+    resource: "opencode --version"
+    effect: allow
+  - action: "shell"
+    resource: "ctx7 setup"
+    effect: ask
+  - action: "shell"
+    resource: "ctx7 login"
+    effect: ask
+  - action: "shell"
+    resource: "ctx7 logout"
+    effect: ask
+  - action: "shell"
+    resource: "npm install -g ctx7"
+    effect: ask
+  - action: "shell"
+    resource: "npm install -g ctx7@*"
+    effect: ask
+  - action: "shell"
+    resource: "bun --version 2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "opencode --version 2>/dev/null"
+    effect: allow
+  - action: "shell"
+    resource: "find *-fprintf*"
+    effect: deny
+  - action: "shell"
+    resource: "git grep *-O=*"
+    effect: deny
+  - action: "shell"
+    resource: "git remote -v >*"
+    effect: deny
+  - action: "shell"
+    resource: "ls *>*>*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/Applications/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/bin/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/cores/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/etc/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/home/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/Library/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/opt/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/private/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/sbin/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/System/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/Users/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/usr/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/var/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/Volumes/*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/a*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/b*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/c*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/d*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/e*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/f*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/g*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/h*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/i*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/j*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/k*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/l*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/m*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/o*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/p*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/q*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/r*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/s*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/t*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/u*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/v*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/w*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/x*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/y*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/z*"
+    effect: deny
+  - action: "shell"
+    resource: "*>*/dev/nfsclnt*"
+    effect: deny
 ---
 
 # Explore Agent

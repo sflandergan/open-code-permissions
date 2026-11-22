@@ -1,96 +1,61 @@
-import type {
-  PermissionEvent,
-  CompletionEvent,
-  ObservationRecord,
-  PermissionDecision,
-} from "./model"
+import type { V2CompletionEvent, V2PermissionEvent } from "./v2-event-adapter"
+import type { ObservationRecord } from "./model"
 import type { ObservationStore } from "./store"
-import type { AgentResolver } from "./runtime-context"
 import type { AbsolutePath } from "./absolute-path"
 import { formatRepositoryIdentity, type RepositoryIdentity } from "./repository-identity"
 import { resolveRepositoryIdentityFromGit } from "./runtime-context"
-import {
-  createPendingRequests,
-  createCascadeTargets,
-  recordAsked,
-  consumeReplied,
-  markCascadeTargets,
-  consumeCascadeTarget,
-  type PendingRequest,
-  type PendingRequests,
-  type CascadeTargets,
-} from "./pending"
 
 /** Upper bound on out-of-order facts retained before the oldest is evicted. */
 const MAX_EARLY_FACTS = 256
 
-/** Correlates permission events and tool completions into observation records. */
+/** The OpenCode major version recorded for every new observation. */
+const OPENCODE_MAJOR_VERSION = 2 as const
+
+/** Correlates v2 permission events and tool completions into observation records. */
 export type PermissionEventCorrelator = {
-  handleEvent(event: PermissionEvent): Promise<void>
-  handleCompletion(completion: CompletionEvent): Promise<void>
+  handleEvent(event: V2PermissionEvent): Promise<void>
+  handleCompletion(completion: V2CompletionEvent): Promise<void>
 }
 
-/** Resolves the current repository identity; injectable for deterministic tests. */
-export type IdentityResolver = () => RepositoryIdentity
+/** Resolves the repository identity of the location that emitted an event; injectable for deterministic tests. */
+export type IdentityResolver = (directory: AbsolutePath) => RepositoryIdentity
 
 /**
  * Receives recoverable operational warnings. The message is sanitized: it
- * names the operation and safe identifiers but never includes requested patterns,
+ * names the operation and safe identifiers but never includes requested resources,
  * tool output, event metadata, message content, or raw remotes.
  */
 export type WarningSink = (message: string) => void
 
 /**
- * Creates a permission event correlator that correlates permission
+ * Creates a permission event correlator that correlates OpenCode 2.x
  * asked/replied events and tool completion hooks into idempotent observation
- * records. `worktree` is the absolute working-tree path persisted with each
- * observation. All event processing is serialized through a promise queue so
- * overlapping or reordered calls cannot interleave. Storage and lookup
- * failures emit sanitized recoverable warnings through `onWarning` and never
- * block permission decisions or tool execution.
+ * records. The asked event's location supplies the worktree and repository
+ * identity; a correlated completion supplies the agent. All event processing
+ * is serialized through a promise queue so overlapping or reordered calls
+ * cannot interleave. Storage failures emit sanitized recoverable warnings
+ * through `onWarning` and never block permission decisions or tool execution.
  */
 export function createPermissionEventCorrelator(
   store: ObservationStore,
-  agentResolver: AgentResolver,
-  worktree: AbsolutePath,
   identityResolver?: IdentityResolver,
   onWarning?: WarningSink,
 ): PermissionEventCorrelator {
-  const pending = createPendingRequests()
-  const cascades = createCascadeTargets()
-  const earlyFacts = createEarlyFactStore()
   const warn = onWarning ?? (() => {})
-  const resolveIdentity = identityResolver ?? (() => resolveRepositoryIdentityFromGit(worktree, warn))
-  return new SqlitePermissionEventCorrelator(
-    store,
-    agentResolver,
-    worktree,
-    pending,
-    cascades,
-    earlyFacts,
-    resolveIdentity,
-    warn,
-  )
+  const resolveIdentity = identityResolver ?? ((directory) => resolveRepositoryIdentityFromGit(directory, warn))
+  return new Correlator(store, new Map(), resolveIdentity, warn)
 }
 
 type EarlyFact =
-  | { kind: "replied"; event: Extract<PermissionEvent, { kind: "replied" }> }
-  | { kind: "completion"; completion: CompletionEvent }
+  | { kind: "replied"; event: Extract<V2PermissionEvent, { kind: "replied" }> }
+  | { kind: "completion"; completion: V2CompletionEvent }
 
 /**
  * Bounded store for facts that arrive before their matching asked record.
  * Entries are keyed by request ID (for replies) or session+call ID (for
  * completions). Bounded to prevent unbounded growth from orphaned facts.
  */
-function createEarlyFactStore(): Map<string, EarlyFact> {
-  return new Map()
-}
-
-function storeEarlyFact(
-  store: Map<string, EarlyFact>,
-  key: string,
-  fact: EarlyFact,
-): void {
+function storeEarlyFact(store: Map<string, EarlyFact>, key: string, fact: EarlyFact): void {
   if (store.size >= MAX_EARLY_FACTS) {
     const oldest = store.keys().next().value
     if (oldest !== undefined) store.delete(oldest)
@@ -126,12 +91,8 @@ function createSerialQueue(): {
   }
 }
 
-class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
+class Correlator implements PermissionEventCorrelator {
   private readonly store: ObservationStore
-  private readonly agentResolver: AgentResolver
-  private readonly worktree: AbsolutePath
-  private readonly pending: PendingRequests
-  private readonly cascades: CascadeTargets
   private readonly earlyFacts: Map<string, EarlyFact>
   private readonly resolveIdentity: IdentityResolver
   private readonly onWarning: WarningSink
@@ -139,31 +100,23 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
 
   constructor(
     store: ObservationStore,
-    agentResolver: AgentResolver,
-    worktree: AbsolutePath,
-    pending: PendingRequests,
-    cascades: CascadeTargets,
     earlyFacts: Map<string, EarlyFact>,
     resolveIdentity: IdentityResolver,
     onWarning: WarningSink,
   ) {
     this.store = store
-    this.agentResolver = agentResolver
-    this.worktree = worktree
-    this.pending = pending
-    this.cascades = cascades
     this.earlyFacts = earlyFacts
     this.resolveIdentity = resolveIdentity
     this.onWarning = onWarning
   }
 
-  async handleEvent(event: PermissionEvent): Promise<void> {
+  async handleEvent(event: V2PermissionEvent): Promise<void> {
     await this.queue.enqueue(async () => {
       try {
         if (event.kind === "asked") {
-          await this.handleAsked(event)
+          this.handleAsked(event)
         } else {
-          await this.handleReplied(event)
+          this.handleReplied(event)
         }
       } catch (err) {
         this.onWarning(
@@ -173,17 +126,15 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
     })
   }
 
-  async handleCompletion(completion: CompletionEvent): Promise<void> {
+  async handleCompletion(completion: V2CompletionEvent): Promise<void> {
     await this.queue.enqueue(async () => {
       try {
-        const updated = this.store.updateCompletion(
-          completion.sessionId,
-          completion.callId,
-          completion,
-        )
+        const updated = this.store.updateCompletion(completion.sessionId, completion.callId, completion)
         if (updated === 0) {
-          const key = `${completion.sessionId}:${completion.callId}`
-          storeEarlyFact(this.earlyFacts, key, { kind: "completion", completion })
+          storeEarlyFact(this.earlyFacts, `${completion.sessionId}:${completion.callId}`, {
+            kind: "completion",
+            completion,
+          })
         }
       } catch (err) {
         this.onWarning(
@@ -193,219 +144,58 @@ class SqlitePermissionEventCorrelator implements PermissionEventCorrelator {
     })
   }
 
-  private async handleAsked(
-    event: Extract<PermissionEvent, { kind: "asked" }>,
-  ): Promise<void> {
-    const repositoryIdentity = formatRepositoryIdentity(this.resolveIdentity())
-    const agent = await this.resolveAgent(event.sessionId, event.messageId)
-
-    const isFirstSeen = !this.pending.has(event.requestId)
-    recordAsked(this.pending, event)
-
-    if (isFirstSeen) {
-      const record: ObservationRecord = {
-        requestId: event.requestId,
-        sessionId: event.sessionId,
-        messageId: event.messageId,
-        callId: event.callId,
-        permission: event.permission,
-        patterns: event.patterns,
-        repositoryIdentity,
-        worktree: this.worktree,
-        agent,
-        askedAt: event.receivedAt,
-      }
-      this.store.upsertAsked(record)
-    } else {
-      this.fillObservationOrigin(event, repositoryIdentity, agent)
+  /**
+   * Records the asked observation against the event's location and applies
+   * any early reply or completion that arrived before it.
+   */
+  private handleAsked(event: Extract<V2PermissionEvent, { kind: "asked" }>): void {
+    const repositoryIdentity = formatRepositoryIdentity(this.resolveIdentity(event.directory))
+    const record: ObservationRecord = {
+      requestId: event.requestId,
+      sessionId: event.sessionId,
+      messageId: event.messageId,
+      callId: event.callId,
+      permission: event.action,
+      patterns: event.resources,
+      repositoryIdentity,
+      worktree: event.directory,
+      agent: null,
+      askedAt: event.receivedAt,
+      historySourceVersion: OPENCODE_MAJOR_VERSION,
     }
-
+    this.store.upsertAsked(record)
     this.applyEarlyReplied(event.requestId)
-    this.applyEarlyCompletions(event.requestId)
+    this.applyEarlyCompletion(event)
   }
 
   /**
-   * Non-destructive observation-origin enrichment: fills null fields without
-   * overwriting known facts.
+   * Records the observed reply as reported; v2 outcomes are never rewritten
+   * as derived decisions.
    */
-  private fillObservationOrigin(
-    event: Extract<PermissionEvent, { kind: "asked" }>,
-    repositoryIdentity: string | null,
-    agent: string | null,
-  ): void {
-    try {
-      this.store.fillObservationOrigin(event.requestId, {
-        repositoryIdentity,
-        agent,
-        messageId: event.messageId,
-        callId: event.callId,
-      })
-    } catch (err) {
-      this.onWarning(
-        `permission-event-correlator: operation=fillObservationOrigin request=${event.requestId}: ${errorMessage(err)}`,
-      )
+  private handleReplied(event: Extract<V2PermissionEvent, { kind: "replied" }>): void {
+    const updated = this.store.updateDecision(event.requestId, event.reply, event.receivedAt)
+    if (updated === 0) {
+      storeEarlyFact(this.earlyFacts, event.requestId, { kind: "replied", event })
     }
   }
 
-  /**
-   * Applies any early reply fact that arrived before this asked event.
-   */
   private applyEarlyReplied(requestId: string): void {
     const early = this.earlyFacts.get(requestId)
-    if (early?.kind === "replied") {
-      this.earlyFacts.delete(requestId)
-      const pending = consumeReplied(this.pending, early.event)
-      if (pending) this.classifyAndStore(early.event, pending)
-    }
+    if (early?.kind !== "replied") return
+    this.earlyFacts.delete(requestId)
+    this.store.updateDecision(requestId, early.event.reply, early.event.receivedAt)
   }
 
-  /**
-   * Applies any early completion fact that matches this request's call ID.
-   */
-  private applyEarlyCompletions(requestId: string): void {
-    const pending = this.pending.get(requestId)
-    if (!pending?.callId) return
-    const key = `${pending.sessionId}:${pending.callId}`
+  private applyEarlyCompletion(event: Extract<V2PermissionEvent, { kind: "asked" }>): void {
+    if (!event.callId) return
+    const key = `${event.sessionId}:${event.callId}`
     const early = this.earlyFacts.get(key)
-    if (early?.kind === "completion") {
-      this.earlyFacts.delete(key)
-      try {
-        this.store.updateCompletion(
-          early.completion.sessionId,
-          early.completion.callId,
-          early.completion,
-        )
-      } catch (err) {
-        this.onWarning(
-          `permission-event-correlator: operation=applyEarlyCompletion session=${early.completion.sessionId} call=${early.completion.callId}: ${errorMessage(err)}`,
-        )
-      }
-    }
-  }
-
-  private handleReplied(
-    event: Extract<PermissionEvent, { kind: "replied" }>,
-  ): void {
-    const pending = consumeReplied(this.pending, event)
-    if (pending) {
-      this.classifyAndStore(event, pending)
-      return
-    }
-    // Try to update the store directly for observations that exist in the DB
-    // but aren't in the pending map (e.g., after plugin restart).
-    const cascade = consumeCascadeTarget(this.cascades, event.requestId)
-    const decision = cascade
-      ? classifyCascadeDecision(event.reply, cascade.reply)
-      : classifyAbsentCascadeDecision(event.reply)
-    try {
-      const updated = this.store.updateDecision(event.requestId, decision, event.receivedAt)
-      if (updated === 0) {
-        storeEarlyFact(this.earlyFacts, event.requestId, { kind: "replied", event })
-      }
-    } catch (err) {
-      this.onWarning(
-        `permission-event-correlator: operation=updateDecision request=${event.requestId}: ${errorMessage(err)}`,
-      )
-    }
-  }
-
-  /**
-   * Classifies a reply as direct, derived, or unresolved. A reply is direct
-   * only when no earlier direct reply's `always` hints cover this request's
-   * patterns.
-   */
-  private classifyAndStore(
-    event: Extract<PermissionEvent, { kind: "replied" }>,
-    pending: PendingRequest,
-  ): void {
-    const cascade = consumeCascadeTarget(this.cascades, event.requestId)
-    const decision = cascade
-      ? classifyCascadeDecision(event.reply, cascade.reply)
-      : classifyDirectDecision(event.reply)
-    if (!cascade && (event.reply === "always" || event.reply === "reject")) {
-      markCascadeTargets(
-        this.pending,
-        this.cascades,
-        event.requestId,
-        pending.always,
-        event.reply,
-      )
-    }
-
-    try {
-      this.store.updateDecision(event.requestId, decision, event.receivedAt)
-    } catch (err) {
-      this.onWarning(
-        `permission-event-correlator: operation=updateDecision request=${event.requestId}: ${errorMessage(err)}`,
-      )
-    }
-  }
-
-  private async resolveAgent(
-    sessionId: string,
-    messageId: string | null,
-  ): Promise<string | null> {
-    try {
-      return await this.agentResolver.resolve({ sessionId, messageId })
-    } catch (err) {
-      this.onWarning(
-        `permission-event-correlator: agent lookup failed for session ${sessionId}: ${errorMessage(err)}`,
-      )
-      return null
-    }
+    if (early?.kind !== "completion") return
+    this.earlyFacts.delete(key)
+    this.store.updateCompletion(event.sessionId, event.callId, early.completion)
   }
 }
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
-}
-
-/**
- * Classifies a reply as direct based on the human-answering request evidence.
- * Direct `once` and `always` are qualifying decisions; direct `reject` is
- * contrary evidence.
- */
-function classifyDirectDecision(reply: "once" | "always" | "reject"): PermissionDecision {
-  switch (reply) {
-    case "once":
-      return "once"
-    case "always":
-      return "always"
-    case "reject":
-      return "reject"
-  }
-}
-
-/**
- * Classifies an automatic cascade reply based on the source reply type.
- * When the cascade source was `always`, automatic `always` replies become
- * `always-derived`. When the cascade source was `reject`, automatic replies
- * become `rejection-derived`. Ambiguous sequences without a known source
- * become `unresolved`. OpenCode answers requests covered by an earlier always
- * reply itself; any other reply on such a request is unexpected and is
- * recorded as unresolved rather than counted as a decision.
- */
-function classifyCascadeDecision(
-  reply: "once" | "always" | "reject",
-  sourceReply?: "always" | "reject",
-): PermissionDecision {
-  if (sourceReply === "always" && reply === "always") return "always-derived"
-  if (sourceReply === "reject") return "rejection-derived"
-  return "unresolved"
-}
-
-/**
- * Classifies a reply for a request not in the pending map and not in cascade
- * targets. This handles the case where the observation exists in the DB but
- * the plugin didn't observe the asked event (e.g., after restart).
- */
-function classifyAbsentCascadeDecision(reply: "once" | "always" | "reject"): PermissionDecision {
-  switch (reply) {
-    case "once":
-      return "unresolved"
-    case "always":
-      return "always-derived"
-    case "reject":
-      return "rejection-derived"
-  }
 }

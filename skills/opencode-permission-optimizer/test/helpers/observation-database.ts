@@ -20,6 +20,10 @@ export interface InsertObservationOptions {
   askedAt: string
   decidedAt?: string | null
   completedAt?: string | null
+  historySourceVersion?: 1 | 2
+  tool?: string | null
+  execution?: "success" | "failure" | "incomplete"
+  exitCode?: number | null
 }
 
 /**
@@ -34,18 +38,19 @@ export function createObservationDatabase(directory: string): string {
     db.exec(`CREATE TABLE observations (
       id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL,
       message_id TEXT, call_id TEXT, repository_identity TEXT, worktree TEXT NOT NULL, agent TEXT,
-      permission TEXT NOT NULL, asked_at TEXT NOT NULL,
+      history_source_version INTEGER NOT NULL DEFAULT 2 CHECK (history_source_version IN (1, 2)),
+      action TEXT NOT NULL, asked_at TEXT NOT NULL,
       decision TEXT CHECK (decision IN ('once','always','reject','always-derived','rejection-derived','unresolved')),
       decided_at TEXT, tool TEXT, execution TEXT CHECK (execution IN ('success','failure','incomplete')),
       exit_code INTEGER, completed_at TEXT,
       qualifying_approval INTEGER NOT NULL GENERATED ALWAYS AS (
         CASE WHEN decision IN ('once','always') AND execution = 'success'
           AND repository_identity IS NOT NULL AND agent IS NOT NULL THEN 1 ELSE 0 END) STORED) STRICT`)
-    db.exec(`CREATE TABLE requested_patterns (
+    db.exec(`CREATE TABLE requested_resources (
       observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
-      pattern_index INTEGER NOT NULL CHECK (pattern_index >= 0),
-      pattern TEXT NOT NULL CHECK (length(pattern) > 0),
-      PRIMARY KEY (observation_id, pattern_index)) STRICT`)
+      resource_index INTEGER NOT NULL CHECK (resource_index >= 0),
+      resource TEXT NOT NULL CHECK (length(resource) > 0),
+      PRIMARY KEY (observation_id, resource_index)) STRICT`)
     db.query("INSERT INTO schema_metadata (id, version) VALUES (1, ?)").run(SCHEMA_VERSION)
   } finally {
     db.close()
@@ -64,9 +69,9 @@ export function insertObservation(dbPath: string, options: InsertObservationOpti
     const result = db
       .query(
         `INSERT INTO observations
-          (request_id, session_id, repository_identity, worktree, agent, permission,
-           asked_at, decision, decided_at, execution, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'success', ?)`,
+          (request_id, session_id, repository_identity, worktree, agent, action,
+           history_source_version, asked_at, decision, decided_at, tool, execution, exit_code, completed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         options.requestId,
@@ -75,14 +80,18 @@ export function insertObservation(dbPath: string, options: InsertObservationOpti
         options.worktree,
         AGENT,
         options.permission,
+        options.historySourceVersion ?? 2,
         options.askedAt,
         options.decision ?? "once",
         options.decidedAt ?? null,
+        options.tool ?? null,
+        options.execution ?? "success",
+        options.exitCode ?? null,
         options.completedAt ?? null,
       )
     const observationId = Number(result.lastInsertRowid)
     const statement = db.query(
-      "INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, ?, ?)",
+      "INSERT INTO requested_resources (observation_id, resource_index, resource) VALUES (?, ?, ?)",
     )
     options.patterns.forEach((pattern, index) => statement.run(observationId, index, pattern))
     return observationId

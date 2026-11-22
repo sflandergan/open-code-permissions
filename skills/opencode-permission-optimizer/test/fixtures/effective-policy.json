@@ -1,96 +1,88 @@
 {
   "agents": [
     {
+      "id": "implement",
       "name": "implement",
       "mode": "subagent",
-      "status": "custom",
+      "hidden": false,
       "rules": [
         {
-          "permission": "*",
-          "pattern": "*",
-          "action": "ask",
+          "action": "*",
+          "resource": "*",
+          "effect": "ask",
           "position": 0,
-          "origin": { "scope": "shared", "source": "opencode.json" },
-          "overrides": []
+          "origin": { "scope": "shared", "source": "opencode.json" }
         },
         {
-          "permission": "bash",
-          "pattern": "*",
-          "action": "ask",
+          "action": "shell",
+          "resource": "*",
+          "effect": "ask",
           "position": 1,
-          "origin": { "scope": "shared", "source": "opencode.json" },
-          "overrides": []
+          "origin": { "scope": "shared", "source": "opencode.json" }
         },
         {
-          "permission": "bash",
-          "pattern": "*>*",
-          "action": "ask",
+          "action": "shell",
+          "resource": "*>*",
+          "effect": "ask",
           "position": 2,
-          "origin": { "scope": "shared", "source": "opencode.json" },
-          "overrides": []
+          "origin": { "scope": "shared", "source": "opencode.json" }
         },
         {
-          "permission": "bash",
-          "pattern": "rm -rf *",
-          "action": "deny",
+          "action": "shell",
+          "resource": "rm -rf *",
+          "effect": "deny",
           "position": 3,
-          "origin": { "scope": "shared", "source": "opencode.json" },
-          "overrides": []
+          "origin": { "scope": "shared", "source": "opencode.json" }
         },
         {
-          "permission": "bash",
-          "pattern": "git status",
-          "action": "allow",
+          "action": "shell",
+          "resource": "git status",
+          "effect": "allow",
           "position": 4,
-          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" },
-          "overrides": []
+          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" }
         },
         {
-          "permission": "bash",
-          "pattern": "git status *",
-          "action": "allow",
+          "action": "shell",
+          "resource": "git status *",
+          "effect": "allow",
           "position": 5,
-          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" },
-          "overrides": [{ "scope": "shared", "source": "opencode.json" }]
+          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" }
         },
         {
-          "permission": "bash",
-          "pattern": "git diff *",
-          "action": "allow",
+          "action": "shell",
+          "resource": "git diff *",
+          "effect": "allow",
           "position": 6,
-          "origin": { "scope": "external", "source": null },
-          "overrides": []
+          "origin": { "scope": "unknown", "source": null }
         },
         {
-          "permission": "edit",
-          "pattern": "*",
-          "action": "allow",
+          "action": "edit",
+          "resource": "*",
+          "effect": "allow",
           "position": 7,
-          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" },
-          "overrides": []
+          "origin": { "scope": "agent", "source": ".opencode/agents/implement.md" }
         },
         {
-          "permission": "read",
-          "pattern": "*",
-          "action": "allow",
+          "action": "read",
+          "resource": "*",
+          "effect": "allow",
           "position": 8,
-          "origin": { "scope": "shared", "source": "opencode.json" },
-          "overrides": []
+          "origin": { "scope": "shared", "source": "opencode.json" }
         }
       ]
     },
     {
+      "id": "explore",
       "name": "explore",
       "mode": "subagent",
-      "status": null,
+      "hidden": false,
       "rules": [
         {
-          "permission": "*",
-          "pattern": "*",
-          "action": "ask",
+          "action": "*",
+          "resource": "*",
+          "effect": "ask",
           "position": 0,
-          "origin": { "scope": "external", "source": null },
-          "overrides": []
+          "origin": { "scope": "unknown", "source": null }
         }
       ]
     }

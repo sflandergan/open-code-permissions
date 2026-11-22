@@ -1,5 +1,5 @@
--- Permission optimizer observation schema version 4.
--- schema_metadata, observations, and requested_patterns
+-- Permission optimizer observation schema version 5.
+-- schema_metadata, observations, and requested_resources
 -- are STRICT tables.
 -- The normative contract lives in the plan and spec; this file is the
 -- authoritative SQL source read by the store and reader scripts.
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS schema_metadata (
   id         INTEGER PRIMARY KEY CHECK (id = 1),
   version    INTEGER NOT NULL,
   created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-             CHECK (created_at IS strftime('%Y-%m-%dT%H:%M:%fZ', created_at))
+              CHECK (created_at IS strftime('%Y-%m-%dT%H:%M:%fZ', created_at))
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS observations (
@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS observations (
   repository_identity  TEXT,
   worktree             TEXT    NOT NULL,
   agent                TEXT,
-  permission           TEXT    NOT NULL,
+  history_source_version INTEGER NOT NULL DEFAULT 2 CHECK (history_source_version IN (1, 2)),
+  action               TEXT    NOT NULL,
   asked_at             TEXT    NOT NULL,
   decision             TEXT    CHECK (decision IN ('once', 'always', 'reject', 'always-derived', 'rejection-derived', 'unresolved')),
   decided_at           TEXT,
@@ -56,9 +57,12 @@ CREATE TABLE IF NOT EXISTS observations (
     (tool IS NULL AND execution IS NULL AND completed_at IS NULL)
     OR (tool IS NOT NULL AND execution IS NOT NULL AND completed_at IS NOT NULL)
   ),
+  -- Shell tools (legacy `bash` and native `shell`) keep the exit invariant:
+  -- success requires zero, failure permits nonzero or unknown exit, and
+  -- incomplete requires NULL.
   CHECK (
     tool IS NULL
-    OR tool <> 'bash'
+    OR (tool <> 'bash' AND tool <> 'shell')
     OR (
       CASE
         WHEN execution = 'success' THEN IIF(exit_code = 0, 1, 0)
@@ -70,21 +74,21 @@ CREATE TABLE IF NOT EXISTS observations (
   ),
   CHECK (
     execution IS NULL
-    OR tool = 'bash'
+    OR tool IN ('bash', 'shell')
     OR exit_code IS NULL
   ),
   -- Non-empty required fields
   CHECK (length(request_id) > 0),
   CHECK (length(session_id) > 0),
   CHECK (length(worktree) > 0),
-  CHECK (length(permission) > 0)
+  CHECK (length(action) > 0)
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS requested_patterns (
+CREATE TABLE IF NOT EXISTS requested_resources (
   observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
-  pattern_index  INTEGER NOT NULL CHECK (pattern_index >= 0),
-  pattern        TEXT    NOT NULL CHECK (length(pattern) > 0),
-  PRIMARY KEY (observation_id, pattern_index)
+  resource_index INTEGER NOT NULL CHECK (resource_index >= 0),
+  resource       TEXT    NOT NULL CHECK (length(resource) > 0),
+  PRIMARY KEY (observation_id, resource_index)
 ) STRICT;
 
 -- Session/call correlation index for completion hooks
@@ -97,7 +101,7 @@ CREATE INDEX IF NOT EXISTS observations_scope_activity_idx
   ON observations (
     repository_identity,
     agent,
-    permission,
+    action,
     decision,
     execution,
     COALESCE(completed_at, decided_at, asked_at) DESC,

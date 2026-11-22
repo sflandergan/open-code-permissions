@@ -95,6 +95,13 @@ class SqliteObservationStore implements ObservationStore {
     return result.changes
   }
 
+  /**
+   * Records the completion for every pending observation of the session/call
+   * pair whose known message ID agrees with the completion's, filling the
+   * message ID and agent origin on the same rows. A known message ID that
+   * disagrees vetoes the row, so a completion never lands on an unrelated
+   * message. Returns the number of updated rows.
+   */
   updateCompletion(
     sessionId: string,
     callId: string,
@@ -103,18 +110,26 @@ class SqliteObservationStore implements ObservationStore {
     assertNonEmpty(sessionId, "sessionId")
     assertNonEmpty(callId, "callId")
     assertCanonicalTimestamp(completion.completedAt, "completedAt")
+    const messageId = completion.messageId ?? null
     const result = this.withTransaction(() =>
       this.db.run(
         `UPDATE observations
-         SET tool = ?, execution = ?, exit_code = ?, completed_at = ?
-         WHERE session_id = ? AND call_id = ? AND completed_at IS NULL`,
+         SET tool = ?, execution = ?, exit_code = ?, completed_at = ?,
+             message_id = COALESCE(message_id, ?),
+             agent = COALESCE(agent, ?)
+         WHERE session_id = ? AND call_id = ? AND completed_at IS NULL
+           AND (? IS NULL OR message_id IS NULL OR message_id = ?)`,
         [
           completion.tool,
           completion.execution,
           completion.exitCode,
           completion.completedAt,
+          messageId,
+          completion.agent ?? null,
           sessionId,
           callId,
+          messageId,
+          messageId,
         ],
       ),
     )
@@ -147,26 +162,27 @@ class SqliteObservationStore implements ObservationStore {
   /**
    * Inserts the asked row or, on a duplicate `request_id`, updates it without
    * erasing known facts: first `asked_at` is preserved, null enrichment fields
-   * never overwrite known values, and existing decision/completion facts are
-   * untouched. Returns the stable row id for child replacement.
+   * never overwrite known values, the recorded history source version is kept,
+   * and existing decision/completion facts are untouched. Returns the stable
+   * row id for child replacement.
    */
   private upsertObservationRow(record: ObservationRecord): number {
     const row = this.db
       .query(
         `INSERT INTO observations
            (request_id, session_id, message_id, call_id,
-            repository_identity, worktree, agent,
-            permission, asked_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (request_id) DO UPDATE SET
-           session_id = excluded.session_id,
-           message_id = COALESCE(observations.message_id, excluded.message_id),
-           call_id = COALESCE(observations.call_id, excluded.call_id),
-           repository_identity = COALESCE(observations.repository_identity, excluded.repository_identity),
-           worktree = excluded.worktree,
-           agent = COALESCE(observations.agent, excluded.agent),
-           permission = excluded.permission
-         RETURNING id`,
+            repository_identity, worktree, agent, history_source_version,
+            action, asked_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT (request_id) DO UPDATE SET
+            session_id = excluded.session_id,
+            message_id = COALESCE(observations.message_id, excluded.message_id),
+            call_id = COALESCE(observations.call_id, excluded.call_id),
+            repository_identity = COALESCE(observations.repository_identity, excluded.repository_identity),
+            worktree = excluded.worktree,
+            agent = COALESCE(observations.agent, excluded.agent),
+            action = excluded.action
+          RETURNING id`,
       )
       .get(
         record.requestId,
@@ -176,16 +192,17 @@ class SqliteObservationStore implements ObservationStore {
         record.repositoryIdentity,
         record.worktree,
         record.agent,
+        record.historySourceVersion ?? 1,
         record.permission,
         record.askedAt,
       ) as { id: number }
     return row.id
   }
 
-  // The pattern count can change between asks of one request, so the set is replaced wholesale inside the caller's BEGIN IMMEDIATE transaction.
+  // The resource count can change between asks of one request, so the set is replaced wholesale inside the caller's BEGIN IMMEDIATE transaction.
   private replacePatterns(observationId: number, patterns: string[]): void {
     this.db.run(
-      "DELETE FROM requested_patterns WHERE observation_id = ?",
+      "DELETE FROM requested_resources WHERE observation_id = ?",
       [observationId],
     )
     this.insertPatterns(observationId, patterns)
@@ -194,7 +211,7 @@ class SqliteObservationStore implements ObservationStore {
   private insertPatterns(observationId: number, patterns: string[]): void {
     for (let i = 0; i < patterns.length; i++) {
       this.db.run(
-        "INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, ?, ?)",
+        "INSERT INTO requested_resources (observation_id, resource_index, resource) VALUES (?, ?, ?)",
         [observationId, i, patterns[i]],
       )
     }
@@ -240,6 +257,9 @@ function assertCanonicalAskedFacts(record: ObservationRecord): void {
   assertNonEmpty(record.worktree, "worktree")
   assertNonEmpty(record.permission, "permission")
   assertCanonicalTimestamp(record.askedAt, "askedAt")
+  if (record.historySourceVersion !== undefined && record.historySourceVersion !== 1 && record.historySourceVersion !== 2) {
+    throw new Error("historySourceVersion must be 1 or 2")
+  }
 }
 
 function assertCanonicalTimestamp(value: string, field: string): void {

@@ -80,7 +80,7 @@ function expectIncompatibleSchemaRefused(directory: string): void {
   writer.close()
 
   const opened = openObservationDatabase(dbPath)
-  expect(opened).toEqual({ state: "incompatible", schemaVersion: 4, foundSchemaVersion: 999 })
+  expect(opened).toEqual({ state: "incompatible", schemaVersion: 5, foundSchemaVersion: 999 })
 
   expect(() =>
     buildAgentPermissionReport({
@@ -90,7 +90,7 @@ function expectIncompatibleSchemaRefused(directory: string): void {
       databasePath: dbPath,
       invokeInspector: () => ({ agents: [] }),
     }),
-  ).toThrow("incompatible schema: expected 4, found 999")
+  ).toThrow("incompatible schema: expected 5, found 999")
 }
 
 describe("observation schema contract", () => {
@@ -100,7 +100,11 @@ describe("observation schema contract", () => {
     expect(decisionHistory.counts).toEqual({
       observations: 1,
       approvals: 1,
+      approvalsBySource: { "1": 1, "2": 0 },
+      qualifyingApprovalsBySource: { "1": 1, "2": 0 },
       rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
       unresolved: 0,
       distinctSessions: 1,
     })
@@ -110,7 +114,12 @@ describe("observation schema contract", () => {
         input: "git status",
         requests: 1,
         approvals: 1,
+        approvalsBySource: { "1": 1, "2": 0 },
+        qualifyingApprovalsBySource: { "1": 1, "2": 0 },
+        successfulOnceApprovalsBySource: { "1": 1, "2": 0 },
         rejections: 0,
+        derivedApprovals: 0,
+        derivedRejections: 0,
         unresolved: 0,
         distinctSessions: 1,
         firstActivityAt: COMPLETED_AT,

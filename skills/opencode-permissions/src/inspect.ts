@@ -55,43 +55,48 @@ export function parseArgs(argv: string[]): InspectArgs {
 }
 
 /**
- * Human-readable output of the enabled-agent inventory.
+ * Human-readable output of the agent inventory: one `id (mode[, hidden])`
+ * line per agent, appending ` — name` only when the runtime's display name
+ * differs from the id.
  */
 export function renderListAgents(report: AgentListReport): string {
-  const lines: string[] = []
-  for (const agent of report.agents) {
-    const status = agent.status === null ? "" : `, ${agent.status}`
-    lines.push(`${agent.name} (${agent.mode}${status})`)
-  }
-  return lines.join("\n")
+  return report.agents
+    .map((agent) => {
+      const suffix = agent.hidden ? ", hidden" : ""
+      const name = agent.name === agent.id ? "" : ` — ${agent.name}`
+      return `${agent.id} (${agent.mode}${suffix})${name}`
+    })
+    .join("\n")
 }
 
 /**
  * Human-readable output of the complete ordered permission rulesets. Each
  * rule line ends with its effective origin - the repository-relative source
- * file with its scope in parentheses, or `external` when no repository source
- * is attributable - followed by the known overridden declaration files in
- * application order when any exist.
+ * file with its scope in parentheses, or `(unknown)` when no editable source
+ * is attributable.
  */
 export function renderEffectivePolicy(report: EffectivePolicyReport): string {
   const lines: string[] = []
   for (const agent of report.agents) {
-    const status = agent.status === null ? "" : `, ${agent.status}`
-    lines.push(`${agent.name} (${agent.mode}${status})`)
+    const suffix = agent.hidden ? ", hidden" : ""
+    const name = agent.name === agent.id ? "" : ` — ${agent.name}`
+    lines.push(`${agent.id} (${agent.mode}${suffix})${name}`)
     for (const rule of agent.rules) {
-      lines.push(`  #${rule.position} ${rule.permission} ${rule.pattern} ${rule.action} ${renderOrigin(rule)}`)
+      lines.push(`  ${renderRule(rule)}`)
     }
   }
   return lines.join("\n")
 }
 
 /**
- * Render one rule's origin and its known override sources.
+ * Render one rule line in the human report.
  */
-function renderOrigin(rule: EffectiveRule): string {
-  const origin = rule.origin.source === null ? "(external)" : `${rule.origin.source} (${rule.origin.scope})`
-  if (rule.overrides.length === 0) return origin
-  return `${origin} overrides ${rule.overrides.map((override) => override.source).join(", ")}`
+function renderRule(rule: EffectiveRule): string {
+  const origin =
+    rule.origin.source === null
+      ? "(unknown)"
+      : `${rule.origin.source} (${rule.origin.scope})`
+  return `#${rule.position} ${rule.action} ${rule.resource} ${rule.effect} ${origin}`
 }
 
 /**
@@ -167,7 +172,10 @@ async function main(argv: string[]): Promise<void> {
   const output =
     command === "list-agents"
       ? renderListOutput(await createAgentListReport({ repositoryRoot, runtime }), json)
-      : renderEffectiveOutput(await createEffectivePolicyReport({ repositoryRoot, runtime, agentName: agent }), json)
+      : renderEffectiveOutput(
+          await createEffectivePolicyReport({ repositoryRoot, runtime, agentName: agent, home: processEnv.HOME ?? null }),
+          json,
+        )
   process.stdout.write(`${output}\n`)
 }
 
@@ -189,8 +197,7 @@ function renderEffectiveOutput(report: EffectivePolicyReport, json: boolean): st
  * Return the message of an error-like value for the CLI error line.
  */
 function errorMessage(cause: unknown): string {
-  if (cause instanceof Error) return cause.message
-  return String(cause)
+  return cause instanceof Error ? cause.message : String(cause)
 }
 
 if (isMain) {

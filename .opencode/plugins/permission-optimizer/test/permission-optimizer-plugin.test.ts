@@ -1,26 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test"
 import { Database } from "bun:sqlite"
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { createHash } from "node:crypto"
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import type { PluginInput } from "@opencode-ai/plugin"
-import * as entry from "../../permission-optimizer"
+import type { Plugin } from "@opencode/plugin"
+import plugin from "../index"
 import { resolveDatabasePath } from "../src/database-path"
-import { permissionV2AskedEvent } from "./fixtures/events"
-
-interface PluginHooks {
-  event?: (args: { event: unknown }) => Promise<void>
-  "tool.execute.after"?: (input: unknown, output: unknown) => Promise<void>
-  dispose?: () => Promise<void>
-}
-
-interface ObservationRow {
-  request_id: string
-  decision: string
-  execution: string
-  tool: string
-}
+import { toAbsolutePath } from "../src/absolute-path"
+import {
+  v2AskedEvent,
+  v2RepliedOnceEvent,
+  v2ShellCompletedExitZero,
+} from "./fixtures/events"
 
 const ENV_KEYS = [
   "HOME",
@@ -30,23 +21,89 @@ const ENV_KEYS = [
   "OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH",
 ] as const
 
-const askedEvent = {
-  type: "permission.asked",
-  properties: {
-    id: "req-1",
-    sessionID: "session-1",
-    permission: "bash",
-    patterns: ["git status"],
-    always: [],
-    tool: { messageID: "msg-1", callID: "call-1" },
-  },
+interface FakeHost {
+  ctx: Plugin.Context
+  push(event: unknown): void
+  hooks: Map<string, (input: unknown) => void | Promise<void>>
 }
-const repliedEvent = {
-  type: "permission.replied",
-  properties: { requestID: "req-1", sessionID: "session-1", reply: "once" },
+
+/** A controllable async iterable standing in for the host's event stream. */
+function createEventStream(): { stream: AsyncIterable<unknown>; push(event: unknown): void } {
+  const buffer: unknown[] = []
+  let waiting: ((result: IteratorResult<unknown>) => void) | null = null
+  let done = false
+  const stream: AsyncIterable<unknown> = {
+    [Symbol.asyncIterator]() {
+      return {
+        next(): Promise<IteratorResult<unknown>> {
+          if (buffer.length > 0) return Promise.resolve({ value: buffer.shift() as unknown, done: false })
+          if (done) return Promise.resolve({ value: undefined, done: true })
+          return new Promise((resolve) => {
+            waiting = resolve
+          })
+        },
+        return(): Promise<IteratorResult<unknown>> {
+          done = true
+          waiting?.({ value: undefined, done: true })
+          waiting = null
+          return Promise.resolve({ value: undefined, done: true })
+        },
+      }
+    },
+  }
+  return {
+    stream,
+    push(event: unknown) {
+      if (waiting) {
+        const resolve = waiting
+        waiting = null
+        resolve({ value: event, done: false })
+      } else {
+        buffer.push(event)
+      }
+    },
+  }
 }
-const completionInput = { tool: "bash", sessionID: "session-1", callID: "call-1" }
-const completionOutput = { metadata: { exit: 0 } }
+
+function createFakeHost(worktree: string, options: { failHookRegistration?: boolean } = {}): FakeHost {
+  const { stream, push } = createEventStream()
+  const hooks = new Map<string, (input: unknown) => void | Promise<void>>()
+  const ctx = {
+    location: { directory: toAbsolutePath(worktree, "worktree") },
+    event: {
+      subscribe: () => stream,
+    },
+    tool: {
+      hook: async (name: string, callback: (input: unknown) => void | Promise<void>) => {
+        if (options.failHookRegistration) throw new Error("hook registration refused")
+        hooks.set(name, callback)
+        return {
+          dispose: () => {
+            hooks.delete(name)
+          },
+        }
+      },
+    },
+  } as unknown as Plugin.Context
+  return { ctx, push, hooks }
+}
+
+async function waitFor(condition: () => boolean, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("timed out waiting for condition")
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+}
+
+function observationRows(dbPath: string): Array<Record<string, unknown>> {
+  const db = new Database(dbPath, { readonly: true })
+  try {
+    return db.query("SELECT * FROM observations").all() as Array<Record<string, unknown>>
+  } finally {
+    db.close()
+  }
+}
 
 let savedEnv: Record<string, string | undefined>
 let tempDir: string
@@ -73,98 +130,133 @@ function pinHome(homeDir: string): void {
   process.env.LOCALAPPDATA = homeDir
 }
 
-function stubInput(worktree: string): PluginInput {
-  return {
-    worktree,
-    client: { session: { message: async () => ({}) } },
-  } as unknown as PluginInput
-}
-
-function defaultDatabaseState(path: string): { exists: boolean; hash: string | null } {
-  if (!existsSync(path)) return { exists: false, hash: null }
-  return { exists: true, hash: createHash("sha256").update(readFileSync(path)).digest("hex") }
-}
-
 describe("plugin entry", () => {
-  it("exposes a single plugin function for OpenCode to load", () => {
-    expect(Object.keys(entry)).toEqual(["PermissionOptimizerPlugin"])
+  it("exposes one plugin definition with the recorder id", () => {
+    expect(plugin.id).toBe("permission-optimizer")
+    expect(typeof plugin.setup).toBe("function")
   })
 
-  it("warns once when two unsupported permission events arrive", async () => {
+  it("records one complete observed lifecycle through the host stream and hook", async () => {
     const homeDir = join(tempDir, "home")
     const overridePath = join(tempDir, "override", "observations.sqlite")
     pinHome(homeDir)
     process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
 
-    const warn = spyOn(console, "warn").mockImplementation(() => {})
-    try {
-      const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
-      await hooks.event?.({ event: permissionV2AskedEvent })
-      await hooks.event?.({ event: permissionV2AskedEvent })
-      await hooks.dispose?.()
+    const host = createFakeHost(tempDir)
+    const cleanup = await plugin.setup(host.ctx)
+    expect(typeof cleanup).toBe("function")
+    expect(host.hooks.has("execute.after")).toBe(true)
 
-      expect(warn).toHaveBeenCalledTimes(1)
-      expect(warn.mock.calls[0]?.[0]).toContain("permission.v2.asked")
-    } finally {
-      warn.mockRestore()
-    }
-  })
+    host.push(v2AskedEvent)
+    await waitFor(() => existsSync(overridePath) && observationRows(overridePath).length === 1)
+    host.push(v2RepliedOnceEvent)
+    await waitFor(() => observationRows(overridePath)[0]?.decision === "once")
+    await host.hooks.get("execute.after")?.(v2ShellCompletedExitZero)
+    await waitFor(() => observationRows(overridePath)[0]?.execution === "success")
 
-  it("keeps OpenCode running when an event cannot be adapted", async () => {
-    const homeDir = join(tempDir, "home")
-    const overridePath = join(tempDir, "override", "observations.sqlite")
-    pinHome(homeDir)
-    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
-
-    const warn = spyOn(console, "warn").mockImplementation(() => {})
-    try {
-      const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
-      const event = {
-        type: "permission.asked",
-        get properties(): Record<string, unknown> {
-          throw new Error("malformed properties")
-        },
-      }
-
-      await expect(hooks.event?.({ event })).resolves.toBeUndefined()
-
-      expect(warn).toHaveBeenCalledTimes(1)
-      const message = String(warn.mock.calls[0]?.[0])
-      expect(message).toContain("event failed")
-      expect(message).toContain("malformed properties")
-      await hooks.dispose?.()
-    } finally {
-      warn.mockRestore()
-    }
-  })
-
-  it("records an observation in the overridden database when a permission is asked, answered, and completed", async () => {
-    const homeDir = join(tempDir, "home")
-    const overridePath = join(tempDir, "override", "observations.sqlite")
-    pinHome(homeDir)
-    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
-
-    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
-    expect(typeof hooks.event).toBe("function")
-    expect(typeof hooks["tool.execute.after"]).toBe("function")
-
-    await hooks.event?.({ event: askedEvent })
-    await hooks.event?.({ event: repliedEvent })
-    await hooks["tool.execute.after"]?.(completionInput, completionOutput)
-    await hooks.dispose?.()
-
-    expect(existsSync(overridePath)).toBe(true)
+    const row = observationRows(overridePath)[0]
+    expect(row).toMatchObject({
+      request_id: "per_01J",
+      action: "shell",
+      decision: "once",
+      execution: "success",
+      exit_code: 0,
+      tool: "shell",
+      agent: "build",
+      history_source_version: 2,
+      worktree: "/worktrees/portfolio-app",
+    })
     const db = new Database(overridePath, { readonly: true })
-    const row = db
-      .query("SELECT request_id, decision, execution, tool FROM observations WHERE request_id = ?")
-      .get("req-1") as ObservationRow | undefined
-    const inputs = db
-      .query("SELECT pattern FROM requested_patterns ORDER BY pattern_index")
-      .all() as Array<{ pattern: string }>
+    const resources = db
+      .query("SELECT resource FROM requested_resources ORDER BY resource_index")
+      .all() as Array<{ resource: string }>
     db.close()
+    expect(resources).toEqual([{ resource: "git status" }, { resource: "git diff" }])
 
-    expect(row).toEqual({ request_id: "req-1", decision: "once", execution: "success", tool: "bash" })
-    expect(inputs).toEqual([{ pattern: "git status" }])
+    await cleanup?.()
+  })
+
+  it("keeps recording after a malformed event and does not throw to the host", async () => {
+    const homeDir = join(tempDir, "home")
+    const overridePath = join(tempDir, "override", "observations.sqlite")
+    pinHome(homeDir)
+    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const host = createFakeHost(tempDir)
+      const cleanup = await plugin.setup(host.ctx)
+
+      host.push({ type: "permission.asked", data: { id: "per_broken" } })
+      host.push({ type: "session.idle", data: {} })
+      host.push(v2AskedEvent)
+      await waitFor(() => existsSync(overridePath) && observationRows(overridePath).length === 1)
+
+      expect(observationRows(overridePath)[0]?.request_id).toBe("per_01J")
+      await cleanup?.()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("unwinds partial setup and closes storage when hook registration fails", async () => {
+    const homeDir = join(tempDir, "home")
+    const overridePath = join(tempDir, "override", "observations.sqlite")
+    pinHome(homeDir)
+    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const host = createFakeHost(tempDir, { failHookRegistration: true })
+      await expect(plugin.setup(host.ctx)).rejects.toThrow("hook registration refused")
+
+      host.push(v2AskedEvent)
+      await new Promise((resolve) => setTimeout(resolve, 25))
+      expect(existsSync(overridePath) ? observationRows(overridePath) : []).toEqual([])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("continues without recording when the observation database cannot be opened", async () => {
+    const blocker = join(tempDir, "not-a-directory")
+    writeFileSync(blocker, "x")
+    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = join(blocker, "observations.sqlite")
+
+    const warn = spyOn(console, "warn").mockImplementation(() => {})
+    try {
+      const host = createFakeHost(tempDir)
+      const cleanup = await plugin.setup(host.ctx)
+      expect(cleanup).toBeUndefined()
+      expect(host.hooks.has("execute.after")).toBe(false)
+      expect(warn).toHaveBeenCalled()
+      expect(String(warn.mock.calls[0]?.[0])).toContain("failed to open observation database")
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it("writes nothing after unload and gates late callbacks", async () => {
+    const homeDir = join(tempDir, "home")
+    const overridePath = join(tempDir, "override", "observations.sqlite")
+    pinHome(homeDir)
+    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
+
+    const host = createFakeHost(tempDir)
+    const cleanup = await plugin.setup(host.ctx)
+
+    host.push(v2AskedEvent)
+    await waitFor(() => existsSync(overridePath) && observationRows(overridePath).length === 1)
+    await cleanup?.()
+    expect(host.hooks.has("execute.after")).toBe(false)
+
+    const lateHook = host.hooks.get("execute.after")
+    expect(lateHook).toBeUndefined()
+    host.push(v2RepliedOnceEvent)
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(observationRows(overridePath)).toHaveLength(1)
+    expect(observationRows(overridePath)[0]?.decision).toBeNull()
   })
 
   it("leaves the default database untouched when an override is set", async () => {
@@ -174,24 +266,16 @@ describe("plugin entry", () => {
 
     delete process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH
     const defaultPath = resolveDatabasePath()
-    const before = defaultDatabaseState(defaultPath)
+    const defaultExisted = existsSync(defaultPath)
 
     process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = overridePath
-    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
-    await hooks.event?.({ event: askedEvent })
-    await hooks.dispose?.()
+    const host = createFakeHost(tempDir)
+    const cleanup = await plugin.setup(host.ctx)
+    host.push(v2AskedEvent)
+    await waitFor(() => existsSync(overridePath) && observationRows(overridePath).length === 1)
+    await cleanup?.()
 
-    expect(defaultDatabaseState(defaultPath)).toEqual(before)
+    expect(existsSync(defaultPath)).toBe(defaultExisted)
     expect(existsSync(overridePath)).toBe(true)
-  })
-
-  it("returns no hooks when the observation database cannot be opened", async () => {
-    const blocker = join(tempDir, "not-a-directory")
-    writeFileSync(blocker, "x")
-    process.env.OPENCODE_PERMISSION_OPTIMIZER_DATABASE_PATH = join(blocker, "observations.sqlite")
-
-    const hooks = (await entry.PermissionOptimizerPlugin(stubInput(tempDir))) as unknown as PluginHooks
-    expect(hooks.event).toBeUndefined()
-    expect(hooks["tool.execute.after"]).toBeUndefined()
   })
 })

@@ -127,10 +127,10 @@ describe("createObservationStore", () => {
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown> & { id: number }
     expect(obs.session_id).toBe("sess_001")
-    expect(obs.permission).toBe("bash")
-    const requestedPatterns = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
-    expect(requestedPatterns).toHaveLength(1)
-    expect(requestedPatterns[0].pattern).toBe("git status")
+    expect(obs.action).toBe("bash")
+    const requestedResources = db.query("SELECT * FROM requested_resources WHERE observation_id = ? ORDER BY resource_index").all(obs.id) as Record<string, unknown>[]
+    expect(requestedResources).toHaveLength(1)
+    expect(requestedResources[0].resource).toBe("git status")
     db.close()
     store.close()
   })
@@ -152,9 +152,9 @@ describe("createObservationStore", () => {
     store.upsertAsked(makeAskedRecord({ patterns: ["git log"] }))
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT id FROM observations WHERE request_id = 'req_001'").get() as { id: number }
-    const requestedPatterns = db.query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index").all(obs.id) as Record<string, unknown>[]
-    expect(requestedPatterns).toHaveLength(1)
-    expect(requestedPatterns[0].pattern).toBe("git log")
+    const requestedResources = db.query("SELECT * FROM requested_resources WHERE observation_id = ? ORDER BY resource_index").all(obs.id) as Record<string, unknown>[]
+    expect(requestedResources).toHaveLength(1)
+    expect(requestedResources[0].resource).toBe("git log")
     db.close()
     store.close()
   })
@@ -165,8 +165,8 @@ describe("createObservationStore", () => {
     const db = openDatabase(dbPath)
     const count = db.query("SELECT COUNT(*) as cnt FROM observations").get() as Record<string, unknown>
     expect(count.cnt).toBe(1)
-    const requestedPatternCount = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
-    expect(requestedPatternCount.cnt).toBe(3)
+    const requestedResourceCount = db.query("SELECT COUNT(*) as cnt FROM requested_resources").get() as Record<string, unknown>
+    expect(requestedResourceCount.cnt).toBe(3)
     db.close()
     store.close()
   })
@@ -284,8 +284,8 @@ describe("createObservationStore", () => {
     store.upsertAsked(makeAskedRecord({ requestId: "req_old", askedAt: "2026-07-01T10:00:00.000Z", patterns: ["a", "b"] }))
     store.prune("2026-08-01T00:00:00.000Z")
     const db = openDatabase(dbPath)
-    const requestedPatterns = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as Record<string, unknown>
-    expect(requestedPatterns.cnt).toBe(0)
+    const requestedResources = db.query("SELECT COUNT(*) as cnt FROM requested_resources").get() as Record<string, unknown>
+    expect(requestedResources.cnt).toBe(0)
     db.close()
     store.close()
   })
@@ -332,6 +332,122 @@ describe("createObservationStore", () => {
     const store = createObservationStore(dbPath)
     store.close()
   })
+
+  test("applies a completion only to observations whose known message id agrees", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ requestId: "req_a", callId: "call_001", messageId: "msg_a", agent: null }))
+    store.upsertAsked(makeAskedRecord({ requestId: "req_b", callId: "call_001", messageId: "msg_b", agent: null }))
+    const updated = store.updateCompletion("sess_001", "call_001", {
+      sessionId: "sess_001",
+      callId: "call_001",
+      messageId: "msg_a",
+      agent: "build",
+      tool: "shell",
+      execution: "success",
+      exitCode: 0,
+      completedAt: VALID_UTC_3,
+    })
+    expect(updated).toBe(1)
+    const db = openDatabase(dbPath)
+    const rows = db
+      .query("SELECT request_id, execution, completed_at, message_id, agent FROM observations ORDER BY request_id")
+      .all() as Array<Record<string, unknown>>
+    expect(rows).toEqual([
+      { request_id: "req_a", execution: "success", completed_at: VALID_UTC_3, message_id: "msg_a", agent: "build" },
+      { request_id: "req_b", execution: null, completed_at: null, message_id: "msg_b", agent: null },
+    ])
+    db.close()
+    store.close()
+  })
+
+  test("fills the agent from the completion without overwriting a known agent", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ callId: "call_001", agent: "explore" }))
+    store.updateCompletion("sess_001", "call_001", {
+      sessionId: "sess_001",
+      callId: "call_001",
+      messageId: null,
+      agent: "build",
+      tool: "shell",
+      execution: "success",
+      exitCode: 0,
+      completedAt: VALID_UTC_3,
+    })
+    const db = openDatabase(dbPath)
+    const obs = db.query("SELECT agent, message_id FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
+    expect(obs.agent).toBe("explore")
+    expect(obs.message_id).toBeNull()
+    db.close()
+    store.close()
+  })
+
+  test("rolls back the completion when it violates the shell exit invariant", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ callId: "call_001" }))
+    expect(() =>
+      store.updateCompletion("sess_001", "call_001", {
+        sessionId: "sess_001",
+        callId: "call_001",
+        messageId: null,
+        agent: null,
+        tool: "shell",
+        execution: "success",
+        exitCode: 1,
+        completedAt: VALID_UTC_3,
+      }),
+    ).toThrow()
+    const db = openDatabase(dbPath)
+    const obs = db.query("SELECT execution, completed_at FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
+    expect(obs.execution).toBeNull()
+    expect(obs.completed_at).toBeNull()
+    db.close()
+    store.close()
+  })
+
+  test("records ordered requested resources with the writer's OpenCode major version", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ patterns: ["git status", "git diff"], historySourceVersion: 2 }))
+    const db = openDatabase(dbPath)
+    const obs = db.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown> & { id: number }
+    expect(obs.history_source_version).toBe(2)
+    const requestedResources = db
+      .query("SELECT resource_index, resource FROM requested_resources WHERE observation_id = ? ORDER BY resource_index")
+      .all(obs.id) as Array<Record<string, unknown>>
+    expect(requestedResources).toEqual([
+      { resource_index: 0, resource: "git status" },
+      { resource_index: 1, resource: "git diff" },
+    ])
+    db.close()
+    store.close()
+  })
+
+  test("records the legacy major version when the record omits the history source version", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord())
+    const db = openDatabase(dbPath)
+    const obs = db.query("SELECT history_source_version FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
+    expect(obs.history_source_version).toBe(1)
+    db.close()
+    store.close()
+  })
+
+  test("keeps the originally recorded major version on duplicate delivery", () => {
+    const store = createObservationStore(dbPath)
+    store.upsertAsked(makeAskedRecord({ requestId: "req_v2_first", historySourceVersion: 2 }))
+    store.upsertAsked(makeAskedRecord({ requestId: "req_v2_first" }))
+    store.upsertAsked(makeAskedRecord({ requestId: "req_v1_first" }))
+    store.upsertAsked(makeAskedRecord({ requestId: "req_v1_first", historySourceVersion: 2 }))
+    const db = openDatabase(dbPath)
+    const rows = db
+      .query("SELECT request_id, history_source_version FROM observations ORDER BY request_id")
+      .all() as Array<Record<string, unknown>>
+    expect(rows).toEqual([
+      { request_id: "req_v1_first", history_source_version: 1 },
+      { request_id: "req_v2_first", history_source_version: 2 },
+    ])
+    db.close()
+    store.close()
+  })
 })
 
 describe("transactional upsert", () => {
@@ -355,7 +471,7 @@ describe("transactional upsert", () => {
     store.close()
     const db = openDatabase(dbPath)
     expect(db.query("SELECT COUNT(*) as cnt FROM observations").get()).toEqual({ cnt: 0 })
-    expect(db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get()).toEqual({ cnt: 0 })
+    expect(db.query("SELECT COUNT(*) as cnt FROM requested_resources").get()).toEqual({ cnt: 0 })
     db.close()
   })
 
@@ -369,8 +485,8 @@ describe("transactional upsert", () => {
     const db = openDatabase(dbPath)
     const obs = db.query("SELECT * FROM observations WHERE request_id = 'req_001'").get() as Record<string, unknown>
     expect(obs.repository_identity).toBe("github.com/user/repo")
-    const requestedPatterns = db.query("SELECT pattern FROM requested_patterns ORDER BY pattern_index").all() as { pattern: string }[]
-    expect(requestedPatterns.map((row) => row.pattern)).toEqual(["git status", "git diff"])
+    const requestedResources = db.query("SELECT resource FROM requested_resources ORDER BY resource_index").all() as { resource: string }[]
+    expect(requestedResources.map((row) => row.resource)).toEqual(["git status", "git diff"])
     db.close()
   })
 })
@@ -476,9 +592,9 @@ describe("automatic retention", () => {
     return rows.map((row) => row.request_id)
   }
 
-  function requestedPatternCount(): number {
+  function requestedResourceCount(): number {
     const db = openDatabase(dbPath)
-    const count = db.query("SELECT COUNT(*) as cnt FROM requested_patterns").get() as { cnt: number }
+    const count = db.query("SELECT COUNT(*) as cnt FROM requested_resources").get() as { cnt: number }
     db.close()
     return count.cnt
   }
@@ -494,14 +610,14 @@ describe("automatic retention", () => {
     // observation remains and the pruned observation's requested patterns are deleted.
     const store2 = createObservationStore(dbPath, fake.clock)
     expect(requestIds()).toEqual(["req_exact", "req_fresh"])
-    expect(requestedPatternCount()).toBe(2)
+    expect(requestedResourceCount()).toBe(2)
 
     // Advancing past the prune interval makes an ordinary write prune the
-    // now-below-cutoff exact observation; its requested patterns are deleted too.
+    // now-below-cutoff exact observation; its requested resources are deleted too.
     fake.set("2026-08-05T13:00:00.000Z")
     store2.upsertAsked(makeAskedRecord({ requestId: "req_new", askedAt: "2026-08-05T11:00:00.000Z" }))
     expect(requestIds()).toEqual(["req_fresh", "req_new"])
-    expect(requestedPatternCount()).toBe(2)
+    expect(requestedResourceCount()).toBe(2)
     store2.close()
   })
 })
@@ -546,10 +662,10 @@ describe("concurrent writers", () => {
       .all() as { id: number }[]
     expect(rows).toHaveLength(1)
     expect(rows[0].id).toBe(seeded.id)
-    const requestedPatterns = check
-      .query("SELECT pattern FROM requested_patterns ORDER BY pattern_index")
-      .all() as { pattern: string }[]
-    expect(requestedPatterns.map((row) => row.pattern)).toEqual(["git status", "git diff", "git log"])
+    const requestedResources = check
+      .query("SELECT resource FROM requested_resources ORDER BY resource_index")
+      .all() as { resource: string }[]
+    expect(requestedResources.map((row) => row.resource)).toEqual(["git status", "git diff", "git log"])
     check.close()
   })
 })
