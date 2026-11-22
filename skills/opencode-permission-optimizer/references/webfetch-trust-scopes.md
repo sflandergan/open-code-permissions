@@ -1,6 +1,6 @@
 # Webfetch Trust Scopes
 
-The optimizer groups successful `webfetch` evidence only into the scopes this page defines. Every match still passes to the advisory workflow, which checks role, intent, and ordered rules; a scope match alone is evidence, not a recommendation.
+The optimizer groups successful `webfetch` evidence only into the scopes this page defines. Every match still passes to the advisory workflow, which checks role, intent, and the ordered rules; a scope match alone is evidence, not a recommendation. When applying a proposed pattern, the workflow first checks it against the effective rules: an applicable later `deny` keeps working, a narrower existing `ask` the owner relies on must survive the placement, an origin pattern never carries over to a multi-tenant host, and uncertain scope or preservation withholds the allow.
 
 ## Evidence that can qualify
 
