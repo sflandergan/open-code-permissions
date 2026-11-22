@@ -14,6 +14,7 @@ import type { ObservationDatabaseState } from "./lib/read-observations"
 import { toAbsolutePath } from "./lib/absolute-path"
 import type { AbsolutePath } from "./lib/absolute-path"
 import { readFailureDetail } from "./lib/error-detail"
+import { requestedUrlMatchesFor } from "./lib/requested-url-matches"
 import {
   formatRepositoryIdentity,
   resolveRepositoryIdentityForWorktree,
@@ -131,10 +132,13 @@ export function parseArgs(argv: string[]): { agent: string; days: number | null 
  * Build the complete agent permission report for one agent. The database
  * opens read-only; a missing database yields a valid empty report. An
  * incompatible schema throws `incompatible schema: expected <n>, found <n>`
- * naming both versions. The inspector runs twice (list-agents, show-effective)
- * unless the database is missing; any inspector failure stops the report
- * because policy coverage is unknown. An available database is closed in a
- * `finally`.
+ * naming both versions. The report carries the retention-window counts by
+ * recording major version, the agent's requested resources under the native
+ * field names, the webfetch URL matches produced from once-approval
+ * evidence, and the inspected effective policy. The inspector runs twice
+ * (list-agents, show-effective) unless the database is missing; any
+ * inspector failure stops the report because policy coverage is unknown. An
+ * available database is closed in a `finally`.
  */
 export function buildAgentPermissionReport(input: AgentPermissionReportRequest): Record<string, unknown> {
   const {
@@ -162,7 +166,7 @@ function buildReportBase({ agent, workingDirectory, now, days }: ReportBaseReque
     to: generatedAt,
   }
   const base = {
-    summaryVersion: 1,
+    summaryVersion: 2,
     generatedAt,
     repository,
     agent: { id: agent, name: null, mode: null },
@@ -203,7 +207,8 @@ function buildMissingDatabaseReport(base: Record<string, unknown>): Record<strin
       distinctSessions: 0,
     },
     effectivePolicy: null,
-    inputs: [],
+    resources: [],
+    webfetchRequestedUrlMatches: [],
   }
 }
 
@@ -234,10 +239,35 @@ function buildAvailableDatabaseReport({
       agent: { id: matched.id, name: matched.name, mode: matched.mode },
       counts: decisionHistory.counts,
       effectivePolicy: { rules: policyEntry.rules },
-      inputs: decisionHistory.inputs,
+      resources: decisionHistory.inputs.map(toResourceSummary),
+      webfetchRequestedUrlMatches: requestedUrlMatchesFor(decisionHistory.inputs),
     }
   } finally {
     opened.db.close()
+  }
+}
+
+/**
+ * Rename one history resource summary onto the native report field names
+ * without touching its counts.
+ */
+function toResourceSummary(input: ReturnType<typeof readPermissionDecisionHistory>["inputs"][number]): Record<string, unknown> {
+  return {
+    action: input.permission,
+    resource: input.input,
+    requests: input.requests,
+    approvals: input.approvals,
+    approvalsBySource: input.approvalsBySource,
+    qualifyingApprovalsBySource: input.qualifyingApprovalsBySource,
+    successfulOnceApprovalsBySource: input.successfulOnceApprovalsBySource,
+    rejections: input.rejections,
+    derivedApprovals: input.derivedApprovals,
+    derivedRejections: input.derivedRejections,
+    unresolved: input.unresolved,
+    distinctSessions: input.distinctSessions,
+    firstActivityAt: input.firstActivityAt,
+    lastActivityAt: input.lastActivityAt,
+    worktrees: input.worktrees,
   }
 }
 
