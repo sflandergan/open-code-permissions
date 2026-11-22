@@ -25,7 +25,7 @@ function insertAskedObservation(
     request_id: "req_001",
     session_id: "sess_001",
     worktree: "/home/user/project",
-    permission: "bash",
+    action: "bash",
     asked_at: VALID_UTC,
   }
   const row = { ...defaults, ...overrides }
@@ -38,15 +38,15 @@ function insertAskedObservation(
   return Number(result.lastInsertRowid)
 }
 
-function insertInput(
+function insertResource(
   db: Database,
   observationId: number,
-  inputIndex: number,
-  exactInput: string,
+  resourceIndex: number,
+  resource: string,
 ): void {
   db.run(
-    "INSERT INTO requested_patterns (observation_id, pattern_index, pattern) VALUES (?, ?, ?)",
-    [observationId, inputIndex, exactInput],
+    "INSERT INTO requested_resources (observation_id, resource_index, resource) VALUES (?, ?, ?)",
+    [observationId, resourceIndex, resource],
   )
 }
 
@@ -119,7 +119,7 @@ describe("observations", () => {
     expect(row.repository_identity).toBeNull()
     expect(row.worktree).toBe("/home/user/project")
     expect(row.agent).toBeNull()
-    expect(row.permission).toBe("bash")
+    expect(row.action).toBe("bash")
     expect(row.asked_at).toBe(VALID_UTC)
     expect(row.decision).toBeNull()
     expect(row.decided_at).toBeNull()
@@ -375,10 +375,74 @@ describe("observations", () => {
     }).toThrow()
   })
 
-  test("rejects empty permission", () => {
+  test("rejects empty action", () => {
     expect(() => {
-      insertAskedObservation(db, { request_id: "r4", permission: "" })
+      insertAskedObservation(db, { request_id: "r4", action: "" })
     }).toThrow()
+  })
+
+  test("defaults the history source version to the current OpenCode major version", () => {
+    insertAskedObservation(db)
+    expect(getObservation(db, "req_001").history_source_version).toBe(2)
+  })
+
+  test("accepts the legacy history source version", () => {
+    insertAskedObservation(db, { request_id: "req_legacy", history_source_version: 1 })
+    expect(getObservation(db, "req_legacy").history_source_version).toBe(1)
+  })
+
+  test("rejects an unsupported history source version", () => {
+    expect(() => {
+      insertAskedObservation(db, { request_id: "req_bad_major", history_source_version: 3 })
+    }).toThrow()
+  })
+
+  test("accepts shell success with zero exit code", () => {
+    insertAskedObservation(db, {
+      request_id: "req_shell_success",
+      tool: "shell",
+      execution: "success",
+      exit_code: 0,
+      completed_at: VALID_UTC_2,
+    })
+    const row = getObservation(db, "req_shell_success")
+    expect(row.execution).toBe("success")
+    expect(row.exit_code).toBe(0)
+  })
+
+  test("rejects shell success with nonzero exit code", () => {
+    expect(() => {
+      insertAskedObservation(db, {
+        request_id: "req_shell_success_bad_exit",
+        tool: "shell",
+        execution: "success",
+        exit_code: 1,
+        completed_at: VALID_UTC_2,
+      })
+    }).toThrow()
+  })
+
+  test("rejects shell failure with null exit code", () => {
+    expect(() => {
+      insertAskedObservation(db, {
+        request_id: "req_shell_fail_null",
+        tool: "shell",
+        execution: "failure",
+        completed_at: VALID_UTC_2,
+      })
+    }).toThrow()
+  })
+
+  test("accepts shell incomplete with null exit code", () => {
+    insertAskedObservation(db, {
+      request_id: "req_shell_incomplete",
+      tool: "shell",
+      execution: "incomplete",
+      completed_at: VALID_UTC_2,
+    })
+    const row = getObservation(db, "req_shell_incomplete")
+    expect(row.execution).toBe("incomplete")
+    expect(row.exit_code).toBeNull()
   })
 
   test("accepts bash incomplete with null exit code", () => {
@@ -406,7 +470,7 @@ describe("observations", () => {
   })
 })
 
-describe("requested_patterns", () => {
+describe("requested_resources", () => {
   let db: Database
 
   beforeEach(() => {
@@ -417,57 +481,57 @@ describe("requested_patterns", () => {
     db.close()
   })
 
-  test("inserts ordered inputs for one observation", () => {
+  test("inserts ordered requested resources for one observation", () => {
     const id = insertAskedObservation(db)
-    insertInput(db, id, 0, "git status")
-    insertInput(db, id, 1, "git diff")
+    insertResource(db, id, 0, "git status")
+    insertResource(db, id, 1, "git diff")
 
     const rows = db
-      .query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index")
+      .query("SELECT * FROM requested_resources WHERE observation_id = ? ORDER BY resource_index")
       .all(id) as Record<string, unknown>[]
     expect(rows).toHaveLength(2)
-    expect(rows[0].pattern_index).toBe(0)
-    expect(rows[0].pattern).toBe("git status")
-    expect(rows[1].pattern_index).toBe(1)
-    expect(rows[1].pattern).toBe("git diff")
+    expect(rows[0].resource_index).toBe(0)
+    expect(rows[0].resource).toBe("git status")
+    expect(rows[1].resource_index).toBe(1)
+    expect(rows[1].resource).toBe("git diff")
   })
 
-  test("rejects a negative input position", () => {
+  test("rejects a negative resource position", () => {
     const id = insertAskedObservation(db)
     expect(() => {
-      insertInput(db, id, -1, "git status")
+      insertResource(db, id, -1, "git status")
     }).toThrow()
   })
 
-  test("rejects an empty input value", () => {
+  test("rejects an empty resource value", () => {
     const id = insertAskedObservation(db)
     expect(() => {
-      insertInput(db, id, 0, "")
+      insertResource(db, id, 0, "")
     }).toThrow()
   })
 
-  test("rejects an input for an observation that does not exist", () => {
+  test("rejects a resource for an observation that does not exist", () => {
     expect(() => {
-      insertInput(db, 999, 0, "git status")
+      insertResource(db, 999, 0, "git status")
     }).toThrow()
   })
 
-  test("allows duplicate input values at different positions", () => {
+  test("allows duplicate resource values at different positions", () => {
     const id = insertAskedObservation(db)
-    insertInput(db, id, 0, "git status")
-    insertInput(db, id, 1, "git status")
+    insertResource(db, id, 0, "git status")
+    insertResource(db, id, 1, "git status")
     const rows = db
-      .query("SELECT * FROM requested_patterns WHERE observation_id = ? ORDER BY pattern_index")
+      .query("SELECT * FROM requested_resources WHERE observation_id = ? ORDER BY resource_index")
       .all(id) as Record<string, unknown>[]
     expect(rows).toHaveLength(2)
   })
 
-  test("deletes an observation's inputs when the observation is deleted", () => {
+  test("deletes an observation's requested resources when the observation is deleted", () => {
     const id = insertAskedObservation(db)
-    insertInput(db, id, 0, "git status")
+    insertResource(db, id, 0, "git status")
     db.run("DELETE FROM observations WHERE id = ?", [id])
     const rows = db
-      .query("SELECT * FROM requested_patterns WHERE observation_id = ?")
+      .query("SELECT * FROM requested_resources WHERE observation_id = ?")
       .all(id) as Record<string, unknown>[]
     expect(rows).toHaveLength(0)
   })

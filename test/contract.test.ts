@@ -80,7 +80,7 @@ function expectIncompatibleSchemaRefused(directory: string): void {
   writer.close()
 
   const opened = openObservationDatabase(dbPath)
-  expect(opened).toEqual({ state: "incompatible", schemaVersion: 4, foundSchemaVersion: 999 })
+  expect(opened).toEqual({ state: "incompatible", schemaVersion: 5, foundSchemaVersion: 999 })
 
   expect(() =>
     buildAgentPermissionReport({
@@ -90,7 +90,7 @@ function expectIncompatibleSchemaRefused(directory: string): void {
       databasePath: dbPath,
       invokeInspector: () => ({ agents: [] }),
     }),
-  ).toThrow("incompatible schema: expected 4, found 999")
+  ).toThrow("incompatible schema: expected 5, found 999")
 }
 
 describe("observation schema contract", () => {

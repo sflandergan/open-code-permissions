@@ -79,7 +79,7 @@ describe("openDatabase", () => {
     const dbPath = toAbsolutePath(join(tmpDir, "obs.sqlite"), "database path")
     const db = openDatabase(dbPath)
     db.run(
-      "INSERT INTO observations (request_id, session_id, worktree, permission, asked_at) VALUES ('w1', 's1', '/w', 'bash', '2026-08-05T10:00:00.000Z')",
+      "INSERT INTO observations (request_id, session_id, worktree, action, asked_at) VALUES ('w1', 's1', '/w', 'bash', '2026-08-05T10:00:00.000Z')",
     )
     expect(statSync(dbPath).mode & 0o777).toBe(0o600)
     const reader = new Database(dbPath, { readonly: true })

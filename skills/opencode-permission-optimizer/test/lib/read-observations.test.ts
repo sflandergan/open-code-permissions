@@ -44,7 +44,7 @@ test("reports a database from an earlier schema version as incompatible", () => 
   const { dbPath, cleanup } = createDatabasePath()
   try {
     const db = new Database(dbPath)
-    db.exec("DROP TABLE requested_patterns")
+    db.exec("DROP TABLE requested_resources")
     db.exec("CREATE TABLE review_checkpoints (repository_identity TEXT, agent TEXT, reviewed_through TEXT) STRICT")
     db.query("UPDATE schema_metadata SET version = ? WHERE id = 1").run(SCHEMA_VERSION - 1)
     db.close()

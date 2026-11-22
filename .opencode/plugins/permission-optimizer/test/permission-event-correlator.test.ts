@@ -345,10 +345,10 @@ describe("createPermissionEventCorrelator", () => {
     const conn = new db(dbPath)
     const obsCount = conn.query("SELECT COUNT(*) as cnt FROM observations").get() as { cnt: number }
     expect(obsCount.cnt).toBe(1)
-    const inputs = conn.query("SELECT * FROM requested_patterns ORDER BY pattern_index").all() as Record<string, unknown>[]
-    expect(inputs).toHaveLength(2)
-    expect(inputs[0].pattern).toBe("git status")
-    expect(inputs[1].pattern).toBe("git diff")
+    const resources = conn.query("SELECT * FROM requested_resources ORDER BY resource_index").all() as Record<string, unknown>[]
+    expect(resources).toHaveLength(2)
+    expect(resources[0].resource).toBe("git status")
+    expect(resources[1].resource).toBe("git diff")
     conn.close()
     store.close()
   })

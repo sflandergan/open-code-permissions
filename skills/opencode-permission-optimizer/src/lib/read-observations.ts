@@ -7,11 +7,11 @@ import { toAbsolutePath } from "./absolute-path"
 import type { AbsolutePath } from "./absolute-path"
 
 /**
- * Current schema version: requested patterns live in `requested_patterns`.
+ * Current schema version: requested resources live in `requested_resources`.
  * Mirrors the plugin's schema contract; plugin and reader are updated as a
  * compatible unit.
  */
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 /** Observation retention window in days from the last lifecycle activity. */
 export const RETENTION_DAYS = 30
@@ -221,10 +221,10 @@ function queryObservedPatternDecisions(db: Database, { repositoryIdentity, agent
   params.push(agent, fromUtc, toUtc)
   return db
     .query(
-      `SELECT o.id, o.request_id, o.session_id, o.permission, o.worktree, o.asked_at,
-              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, rp.pattern AS pattern
+      `SELECT o.id, o.request_id, o.session_id, o.action AS permission, o.worktree, o.asked_at,
+              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, rr.resource AS pattern
        FROM observations o
-       JOIN requested_patterns rp ON rp.observation_id = o.id
+       JOIN requested_resources rr ON rr.observation_id = o.id
        WHERE o.${identityClause}
          AND o.agent = ?
          AND COALESCE(o.completed_at, o.decided_at, o.asked_at) >= ?
