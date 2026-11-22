@@ -69,9 +69,10 @@ interface ReportBase {
 type ReportBaseRequest = Pick<AgentPermissionReportRequest, "agent" | "workingDirectory" | "now" | "days">
 
 interface InspectorAgent {
+  id: string
   name: string
-  mode: string | null
-  status: string | null
+  mode: string
+  hidden: boolean
   rules: unknown
 }
 
@@ -164,7 +165,7 @@ function buildReportBase({ agent, workingDirectory, now, days }: ReportBaseReque
     summaryVersion: 1,
     generatedAt,
     repository,
-    agent: { name: agent, mode: null, status: null },
+    agent: { id: agent, name: null, mode: null },
     retainedInterval,
   }
   return { base, repository, retainedInterval }
@@ -230,7 +231,7 @@ function buildAvailableDatabaseReport({
       ...base,
       databaseState: "available",
       schemaVersion: opened.schemaVersion,
-      agent: { name: matched.name, mode: matched.mode, status: matched.status ?? null },
+      agent: { id: matched.id, name: matched.name, mode: matched.mode },
       counts: decisionHistory.counts,
       effectivePolicy: { rules: policyEntry.rules },
       inputs: decisionHistory.inputs,
@@ -240,9 +241,9 @@ function buildAvailableDatabaseReport({
   }
 }
 
-function findInspectorAgent(report: unknown, agent: string, label: string): InspectorAgent {
-  const matched = readInspectorAgents(report).find((entry) => entry.name === agent)
-  if (matched === undefined) throw new Error(`agent "${agent}" not found in the ${label}`)
+function findInspectorAgent(report: unknown, agentId: string, label: string): InspectorAgent {
+  const matched = readInspectorAgents(report).find((entry) => entry.id === agentId)
+  if (matched === undefined) throw new Error(`agent "${agentId}" not found in the ${label}`)
   return matched
 }
 
@@ -253,13 +254,14 @@ function readInspectorAgents(report: unknown): InspectorAgent[] {
 }
 
 function readInspectorAgent(value: unknown): InspectorAgent {
-  if (!isRecord(value) || typeof value.name !== "string") {
-    throw new Error("inspector returned an agent entry without a name")
+  if (!isRecord(value) || typeof value.id !== "string") {
+    throw new Error("inspector returned an agent entry without an id")
   }
   return {
-    name: value.name,
-    mode: typeof value.mode === "string" ? value.mode : null,
-    status: typeof value.status === "string" ? value.status : null,
+    id: value.id,
+    name: typeof value.name === "string" ? value.name : "",
+    mode: typeof value.mode === "string" ? value.mode : "",
+    hidden: typeof value.hidden === "boolean" ? value.hidden : false,
     rules: value.rules,
   }
 }

@@ -1,436 +1,501 @@
 import { expect, test } from "bun:test"
-import { writeFileSync } from "node:fs"
+import { readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { createAgentListReport, createEffectivePolicyReport } from "../../src/lib/inspection"
-import type { EffectivePolicyReport, EffectiveRule } from "../../src/lib/types"
+import type { EffectivePolicyReport } from "../../src/lib/types"
+import { toAbsolutePath } from "../../src/lib/absolute-path"
 import {
+  AGENT_MD_FIXTURE,
   captureRejection,
   createFakeRuntime,
   createFixtureRepository,
+  FIXTURE_HOME,
+  MODES_BUILD_MD_FIXTURE,
+  OPENCODE_JSON_FIXTURE,
+  OPENCODE_JSONC_FIXTURE,
   rulesByPosition,
 } from "../helpers/inspection-fixtures"
-import type { FixtureConfig } from "../helpers/inspection-fixtures"
+import type { FixtureWorldOptions } from "../helpers/inspection-fixtures"
 
-// A full agent frontmatter exercising blank lines and comments around the
-// permission block, single- and double-quoted keys, a single-quoted action,
-// later top-level keys, and CRLF line endings.
-const TOLERANT_FRONTMATTER = [
-  "---",
-  "description: hidden fixture agent",
-  "mode: all",
-  "",
-  "permission:",
-  "",
-  "  # quoted keys and actions",
-  "  edit: 'deny'",
-  "  read:",
-  "    '*.env.example': allow",
-  "    \"opencode.json\": allow",
-  "  bash:",
-  "    \"*>*\": deny",
-  "model: openai/ignored",
-  "hidden: true",
-  "---",
-  "# ghost",
-].join("\r\n")
+const GHOST_MD = ".opencode/agents/ghost.md"
+const BUILD_MODES_MD = ".opencode/modes/build.md"
+const JSON_SHARED = { scope: "shared" as const, source: "opencode.json" }
+const JSONC_SHARED = { scope: "shared" as const, source: "opencode.jsonc" }
+const JSON_AGENT = { scope: "agent" as const, source: "opencode.json" }
+const UNKNOWN = { scope: "unknown" as const, source: null }
 
-test("the agent inventory mirrors the runtime's enabled agents, including hidden ones", async () => {
-  const repo = createFixtureRepository()
-  try {
-    const report = await createAgentListReport({ repositoryRoot: repo.root, runtime: createFakeRuntime() })
-
-    expect(report.agents.map((agent) => agent.name)).toEqual([
-      "compaction",
-      "explore",
-      "general",
-      "summary",
-      "title",
-      "ghost",
-    ])
-    expect(report.agents.some((agent) => agent.name === "plan" || agent.name === "build")).toBeFalsy()
-    expect(report.agents.some((agent) => agent.name === "ghost")).toBeTruthy()
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("each enabled agent reports native or custom status from the runtime", async () => {
-  const repo = createFixtureRepository()
-  try {
-    const runtime = createFakeRuntime({ omitNative: ["summary"] })
-    const report = await createAgentListReport({ repositoryRoot: repo.root, runtime })
-    const byName = Object.fromEntries(report.agents.map((agent) => [agent.name, agent]))
-
-    expect(byName.compaction.status).toEqual("native")
-    expect(byName.explore.status).toEqual("native")
-    expect(byName.ghost.status).toEqual("custom")
-    expect(byName.summary.status).toEqual(null)
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("the agent inventory reports only name, mode, and status per agent", async () => {
-  const repo = createFixtureRepository()
-  try {
-    const report = await createAgentListReport({ repositoryRoot: repo.root, runtime: createFakeRuntime() })
-    const byName = Object.fromEntries(report.agents.map((agent) => [agent.name, agent]))
-
-    expect(byName.compaction).toEqual({ name: "compaction", mode: "primary", status: "native" })
-    expect(byName.ghost).toEqual({ name: "ghost", mode: "all", status: "custom" })
-  } finally {
-    repo.cleanup()
-  }
-})
-
-/**
- * Build the effective ghost policy report against the fixture repository.
- */
-async function buildGhostPolicyReport({
-  configOverride,
-}: { configOverride?: (config: FixtureConfig) => void } = {}): Promise<EffectivePolicyReport> {
-  const repo = createFixtureRepository()
-  try {
-    return await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
-      runtime: createFakeRuntime({ configOverride }),
-      agentName: "ghost",
-    })
-  } finally {
-    repo.cleanup()
-  }
+interface ReportWorld {
+  report: EffectivePolicyReport
+  cleanup: () => void
 }
 
-test("the effective policy reports the rules in resolved order", async () => {
-  const report = await buildGhostPolicyReport()
-
-  expect(report.agents.length).toEqual(1)
-  const agent = report.agents[0]
-  expect(agent.name).toEqual("ghost")
-  expect(agent.mode).toEqual("all")
-  expect(agent.status).toEqual("custom")
-  expect(agent.rules.length).toEqual(36)
-  expect(agent.rules.map((rule) => rule.position)).toEqual(Array.from({ length: 36 }, (_, i) => i))
-  expect(
-    agent.rules.every(
-      (rule) =>
-        typeof rule.permission === "string" &&
-        typeof rule.pattern === "string" &&
-        ["allow", "ask", "deny"].includes(rule.action) &&
-        typeof rule.origin === "object" &&
-        Array.isArray(rule.overrides),
-    ),
-  ).toBeTruthy()
-})
-
-test("a rule declared only in the repository config reports a shared origin", async () => {
-  const report = await buildGhostPolicyReport()
-  const byPosition = rulesByPosition(report)
-
-  expect(byPosition[8]).toEqual({
-    permission: "read",
-    pattern: "*",
-    action: "allow",
-    position: 8,
-    origin: { scope: "shared", source: "opencode.json" },
-    overrides: [],
-  })
-  for (const position of [15, 16, 17]) {
-    expect(byPosition[position].origin).toEqual({ scope: "shared", source: "opencode.json" })
-    expect(byPosition[position].overrides).toEqual([])
-  }
-})
-
-test("a rule declared only in the agent source reports an agent origin", async () => {
-  const report = await buildGhostPolicyReport()
-  const byPosition = rulesByPosition(report)
-
-  expect(byPosition[19]).toEqual({
-    permission: "read",
-    pattern: "*",
-    action: "deny",
-    position: 19,
-    origin: { scope: "agent", source: ".opencode/agents/ghost.md" },
-    overrides: [],
-  })
-  for (const position of [23, 29, 32]) {
-    expect(byPosition[position].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-    expect(byPosition[position].overrides).toEqual([])
-  }
-})
-
-/**
- * Assert the optimizer skill declarations and their relative order.
- */
-function expectOptimizerSkillOrigins(byPosition: Record<number, EffectiveRule>): void {
-  expect(byPosition[16]).toEqual({
-    permission: "skill",
-    pattern: "opencode-permission-optimizer",
-    action: "deny",
-    position: 16,
-    origin: { scope: "shared", source: "opencode.json" },
-    overrides: [],
-  })
-  expect(byPosition[28]).toEqual({
-    permission: "skill",
-    pattern: "opencode-permission-optimizer",
-    action: "allow",
-    position: 28,
-    origin: { scope: "agent", source: ".opencode/agents/ghost.md" },
-    overrides: [],
-  })
-  expect(byPosition[16].position < byPosition[28].position).toBeTruthy()
-  expect(byPosition[21]).toEqual({
-    permission: "read",
-    pattern: ".agents/skills/opencode-permission-optimizer/**",
-    action: "allow",
-    position: 21,
-    origin: { scope: "agent", source: ".opencode/agents/ghost.md" },
-    overrides: [],
-  })
-}
-
-/**
- * Assert the agent permission report entry point and that no other optimizer
- * script command or tool permission is allowed.
- */
-function expectOptimizerCommandSurface(
-  report: EffectivePolicyReport,
-  byPosition: Record<number, EffectiveRule>,
-): void {
-  const entryPoints = ['bash "*/opencode-permission-optimizer/scripts/agent-permission-report.sh" --agent *']
-  for (let i = 0; i < entryPoints.length; i++) {
-    expect(byPosition[32 + i]).toEqual({
-      permission: "bash",
-      pattern: entryPoints[i],
-      action: "allow",
-      position: 32 + i,
-      origin: { scope: "agent", source: ".opencode/agents/ghost.md" },
-      overrides: [],
-    })
-  }
-
-  expect(report.agents[0].rules.every((rule) => rule.permission !== "tool")).toBeTruthy()
-  expect(
-    report.agents[0].rules.every(
-      (rule) =>
-        rule.permission !== "bash" ||
-        !rule.pattern.startsWith('bash "*/opencode-permission-optimizer/scripts/') ||
-        rule.pattern === entryPoints[0],
-    ),
-  ).toBeTruthy()
-}
-
-test("the optimizer rules resolve to their shared and agent origins", async () => {
-  const report = await buildGhostPolicyReport()
-  const byPosition = rulesByPosition(report)
-
-  expectOptimizerSkillOrigins(byPosition)
-  expectOptimizerCommandSurface(report, byPosition)
-})
-
-test("equivalent shared and agent declarations report separate positions and origins", async () => {
-  const report = await buildGhostPolicyReport()
-  const byPosition = rulesByPosition(report)
-
-  expect(byPosition[13].origin).toEqual({ scope: "shared", source: "opencode.json" })
-  expect(byPosition[22].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-  expect(byPosition[13].overrides).toEqual([])
-  expect(byPosition[22].overrides).toEqual([])
-})
-
-test("a repository agent declaration superseded by the agent source is a known override", async () => {
-  const report = await buildGhostPolicyReport()
-  const byPosition = rulesByPosition(report)
-
-  expect(byPosition[18]).toEqual({
-    permission: "read",
-    pattern: "opencode.json",
-    action: "allow",
-    position: 18,
-    origin: { scope: "agent", source: ".opencode/agents/ghost.md" },
-    overrides: [{ scope: "agent", source: "opencode.json" }],
-  })
-})
-
-test("rules without a repository declaration report an external origin with no source", async () => {
-  const report = await buildGhostPolicyReport()
-  const byPosition = rulesByPosition(report)
-
-  for (const position of [0, 3, 35]) {
-    expect(byPosition[position].origin).toEqual({ scope: "external", source: null })
-    expect(byPosition[position].overrides).toEqual([])
-  }
-})
-
-test("a repository declaration attributes to at most one resolved position", async () => {
-  const report = await buildGhostPolicyReport()
-  const byPosition = rulesByPosition(report)
-
-  expect(byPosition[8].origin).toEqual({ scope: "shared", source: "opencode.json" })
-  expect(byPosition[14].origin).toEqual({ scope: "external", source: null })
-})
-
-test("the effective policy without an agent name reports every enabled agent", async () => {
-  const repo = createFixtureRepository()
+async function buildGhostPolicyReport(options: FixtureWorldOptions = {}): Promise<ReportWorld> {
+  const repository = createFixtureRepository()
   try {
     const report = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
+      repositoryRoot: repository.root,
+      runtime: createFakeRuntime(options),
+      agentName: "ghost",
+      home: FIXTURE_HOME,
+    })
+    return { report, cleanup: repository.cleanup }
+  } catch (cause) {
+    repository.cleanup()
+    throw cause
+  }
+}
+
+test("the agent inventory mirrors the runtime agents exactly", async () => {
+  const repository = createFixtureRepository()
+  try {
+    const report = await createAgentListReport({
+      repositoryRoot: repository.root,
       runtime: createFakeRuntime(),
     })
 
-    expect(report.agents.map((agent) => agent.name)).toEqual([
-      "compaction",
-      "explore",
-      "general",
-      "summary",
-      "title",
-      "ghost",
+    expect(report.agents.map((agent) => [agent.id, agent.name, agent.mode, agent.hidden])).toEqual([
+      ["build", "Build", "primary", false],
+      ["compaction", "Compaction", "primary", true],
+      ["explore", "Explore", "subagent", false],
+      ["general", "General", "subagent", false],
+      ["ghost", "ghost", "all", true],
+      ["summary", "Summary", "primary", true],
+      ["title", "Title", "primary", true],
     ])
-    for (const agent of report.agents) {
-      expect(agent.rules.length).toEqual(36)
-      expect(
-        agent.rules.every(
-          (rule) => rule.origin.scope === "shared" || rule.origin.scope === "agent" || rule.origin.scope === "external",
-        ),
-      ).toBeTruthy()
-    }
   } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
 
-test("requesting an unknown agent fails with inventory context", async () => {
-  const repo = createFixtureRepository()
+test("the agent inventory reports only id, name, mode, and hidden per agent", async () => {
+  const repository = createFixtureRepository()
+  try {
+    const report = await createAgentListReport({
+      repositoryRoot: repository.root,
+      runtime: createFakeRuntime(),
+    })
+    const ghost = report.agents.find((agent) => agent.id === "ghost")
+
+    expect(Object.keys(ghost ?? {}).sort()).toEqual(["hidden", "id", "mode", "name"])
+  } finally {
+    repository.cleanup()
+  }
+})
+
+test("the effective policy reports every enabled agent with rules in runtime positions", async () => {
+  const repository = createFixtureRepository()
+  try {
+    const report = await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime: createFakeRuntime(),
+      home: FIXTURE_HOME,
+    })
+
+    expect(report.agents.map((agent) => agent.id)).toEqual([
+      "build",
+      "compaction",
+      "explore",
+      "general",
+      "ghost",
+      "summary",
+      "title",
+    ])
+    for (const agent of report.agents) {
+      expect(agent.rules.map((rule) => rule.position)).toEqual(Array.from({ length: agent.rules.length }, (_, i) => i))
+      expect(
+        agent.rules.every(
+          (rule) =>
+            typeof rule.action === "string" &&
+            typeof rule.resource === "string" &&
+            ["allow", "ask", "deny"].includes(rule.effect) &&
+            typeof rule.origin === "object" &&
+            rule.origin !== null,
+        ),
+      ).toBeTruthy()
+    }
+    expect(report.agents.find((agent) => agent.id === "ghost")?.rules.length).toEqual(28)
+    expect(report.agents.find((agent) => agent.id === "build")?.rules.length).toEqual(11)
+  } finally {
+    repository.cleanup()
+  }
+})
+
+test("reports effective rules in runtime order when the same rule appears twice", async () => {
+  const { report, cleanup } = await buildGhostPolicyReport()
+  try {
+    const ghost = report.agents[0]
+    if (ghost === undefined) throw new Error("expected the ghost agent report")
+    const duplicated = ghost.rules
+      .filter((rule) => rule.action === "edit" && rule.resource === "*" && rule.effect === "deny")
+      .slice(-2)
+    const [first, second] = duplicated
+
+    expect(duplicated.map((rule) => rule.position)).toEqual([11, 12])
+    expect(first).toEqual({
+      action: "edit",
+      resource: "*",
+      effect: "deny",
+      position: 11,
+      origin: { scope: "agent", source: GHOST_MD },
+    })
+    expect(second).toEqual({
+      action: "edit",
+      resource: "*",
+      effect: "deny",
+      position: 12,
+      origin: { scope: "agent", source: GHOST_MD },
+    })
+  } finally {
+    cleanup()
+  }
+})
+
+test("reports the agent definition as the source when its native rule has one verified position", async () => {
+  const { report, cleanup } = await buildGhostPolicyReport()
+  try {
+    const byPosition = rulesByPosition(report)
+
+    expect(byPosition[20]).toEqual({
+      action: "read",
+      resource: ".opencode/agents/*.md",
+      effect: "allow",
+      position: 20,
+      origin: { scope: "agent", source: GHOST_MD },
+    })
+    expect(byPosition[25]).toEqual({
+      action: "shell",
+      resource: "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *",
+      effect: "allow",
+      position: 25,
+      origin: { scope: "agent", source: GHOST_MD },
+    })
+  } finally {
+    cleanup()
+  }
+})
+
+test("attributes verified rules to each repository source in runtime order", async () => {
+  const { report, cleanup } = await buildGhostPolicyReport()
+  try {
+    const ghost = report.agents[0]
+    if (ghost === undefined) throw new Error("expected the ghost agent report")
+
+    expect(ghost.rules.slice(4, 14).map((rule) => rule.origin)).toEqual([
+      UNKNOWN,
+      JSON_SHARED,
+      JSON_SHARED,
+      JSON_SHARED,
+      JSONC_SHARED,
+      JSON_AGENT,
+      JSON_AGENT,
+      { scope: "agent", source: GHOST_MD },
+      { scope: "agent", source: GHOST_MD },
+      { scope: "agent", source: GHOST_MD },
+    ])
+    expect(ghost.rules[0]?.origin).toEqual(UNKNOWN)
+  } finally {
+    cleanup()
+  }
+})
+
+test("attributes shared rules the runtime reports but the owner's global config declares as unknown", async () => {
+  const { report, cleanup } = await buildGhostPolicyReport()
+  try {
+    const byPosition = rulesByPosition(report)
+
+    expect(byPosition[4]).toEqual({
+      action: "webfetch",
+      resource: "example.test/*",
+      effect: "deny",
+      position: 4,
+      origin: { scope: "unknown", source: null },
+    })
+  } finally {
+    cleanup()
+  }
+})
+
+test("attributes an agent file discovered at a config directory entry to its own position", async () => {
+  const repository = createFixtureRepository()
+  try {
+    const report = await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime: createFakeRuntime(),
+      agentName: "build",
+      home: FIXTURE_HOME,
+    })
+    const build = report.agents[0]
+    if (build === undefined) throw new Error("expected the build agent report")
+
+    expect(build.rules[10]).toEqual({
+      action: "shell",
+      resource: "git status",
+      effect: "allow",
+      position: 10,
+      origin: { scope: "agent", source: BUILD_MODES_MD },
+    })
+    expect(build.rules[0]?.origin).toEqual(UNKNOWN)
+  } finally {
+    repository.cleanup()
+  }
+})
+
+test("leaves the rule source unknown when identical declarations cannot be distinguished", async () => {
+  const repository = createFixtureRepository()
+  try {
+    const runtime = createFakeRuntime({
+      configEntriesOverride: (entries) => entries.filter((entry) => entry.path !== `${repository.root}/opencode.jsonc`),
+      agentsOverride: () => [
+        {
+          id: "ambiguous",
+          name: "Ambiguous",
+          mode: "all",
+          hidden: false,
+          permissions: [
+            { action: "*", resource: "*", effect: "allow" },
+            { action: "read", resource: "*.env", effect: "ask" },
+            { action: "read", resource: "*.env.*", effect: "ask" },
+            { action: "read", resource: "*.env.example", effect: "allow" },
+            { action: "webfetch", resource: "example.test/*", effect: "deny" },
+            { action: "read", resource: "*", effect: "ask" },
+            { action: "read", resource: "*", effect: "ask" },
+          ],
+        },
+      ],
+    })
+    const report = await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime,
+      agentName: "ambiguous",
+      home: FIXTURE_HOME,
+    })
+    const rules = (report.agents[0]?.rules ?? []).filter(
+      (rule) => rule.action === "read" && rule.resource === "*" && rule.effect === "ask",
+    )
+
+    expect(rules.map((rule) => rule.position)).toEqual([5, 6])
+    expect(rules.every((rule) => rule.origin.scope === "unknown")).toBeTruthy()
+    expect(report.agents[0]?.rules[4]?.origin.source).toEqual(null)
+  } finally {
+    repository.cleanup()
+  }
+})
+
+test("leaves the rule source unknown when the config bytes disagree with the runtime report", async () => {
+  const repository = createFixtureRepository()
+  try {
+    rmSync(join(repository.root, "opencode.json"))
+
+    const report = await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime: createFakeRuntime(),
+      agentName: "ghost",
+      home: FIXTURE_HOME,
+    })
+    const byPosition = rulesByPosition(report)
+
+    expect(byPosition[5].origin).toEqual(UNKNOWN)
+    expect(byPosition[8].origin).toEqual({ scope: "shared", source: "opencode.jsonc" })
+    expect(byPosition[15].origin).toEqual({ scope: "agent", source: GHOST_MD })
+  } finally {
+    repository.cleanup()
+  }
+})
+
+test("leaves the rule source unknown for a symlinked agent file the runtime read through", async () => {
+  const outsideRoot = toAbsolutePath(mkdtempSync(join(tmpdir(), "opencode-permissions-outside-")), "outside root")
+  const repository = createFixtureRepository()
+  try {
+    writeFileSync(
+      join(outsideRoot, "linked.md"),
+      [
+        "---",
+        "description: linked agent outside the repository",
+        "permissions:",
+        "  - action: read",
+        "    resource: linked-source",
+        "    effect: allow",
+        "---",
+        "linked fixture",
+      ].join("\n"),
+    )
+    symlinkSync(join(outsideRoot, "linked.md"), join(repository.root, ".opencode", "agents", "linked.md"))
+
+    const runtime = createFakeRuntime({
+      agentsOverride: (agents) => [
+        ...agents,
+        {
+          id: "linked",
+          name: "linked",
+          mode: "all",
+          hidden: false,
+          permissions: [
+            { action: "*", resource: "*", effect: "allow" },
+            { action: "read", resource: "*.env", effect: "ask" },
+            { action: "read", resource: "*.env.*", effect: "ask" },
+            { action: "read", resource: "*.env.example", effect: "allow" },
+            { action: "webfetch", resource: "example.test/*", effect: "deny" },
+            { action: "read", resource: "*", effect: "allow" },
+            { action: "skill", resource: "opencode-permission-optimizer", effect: "deny" },
+            { action: "edit", resource: "*", effect: "deny" },
+            { action: "shell", resource: "*", effect: "ask" },
+            { action: "read", resource: "linked-source", effect: "allow" },
+          ],
+        },
+      ],
+    })
+
+    const report = await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime,
+      agentName: "linked",
+      home: FIXTURE_HOME,
+    })
+    const rule = report.agents[0]?.rules[9]
+
+    expect(rule).toEqual({
+      action: "read",
+      resource: "linked-source",
+      effect: "allow",
+      position: 9,
+      origin: UNKNOWN,
+    })
+    expect(report.agents[0]?.rules[5]?.origin).toEqual(JSON_SHARED)
+  } finally {
+    repository.cleanup()
+    rmSync(outsideRoot, { recursive: true, force: true })
+  }
+})
+
+test("preserves the runtime's action spelling when the reported rule only differs by case", async () => {
+  const repository = createFixtureRepository()
+  try {
+    const runtime = createFakeRuntime({
+      configEntriesOverride: () => [
+        {
+          type: "document",
+          path: join(repository.root, "opencode.json"),
+          permissions: [{ action: "Read", resource: "*", effect: "allow" }],
+          agents: {},
+        },
+      ],
+      agentsOverride: () => [
+        {
+          id: "cased",
+          name: "cased",
+          mode: "subagent",
+          hidden: false,
+          permissions: [
+            { action: "*", resource: "*", effect: "allow" },
+            { action: "read", resource: "*", effect: "allow" },
+          ],
+        },
+      ],
+    })
+
+    const report = await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime,
+      agentName: "cased",
+      home: FIXTURE_HOME,
+    })
+    const rule = report.agents[0]?.rules[1]
+
+    expect(rule).toEqual({
+      action: "read",
+      resource: "*",
+      effect: "allow",
+      position: 1,
+      origin: UNKNOWN,
+    })
+  } finally {
+    repository.cleanup()
+  }
+})
+
+test("rejects an agent on the command line that the runtime inventory does not list", async () => {
+  const repository = createFixtureRepository()
   try {
     const error = await captureRejection(
       createEffectivePolicyReport({
-        repositoryRoot: repo.root,
+        repositoryRoot: repository.root,
         runtime: createFakeRuntime(),
         agentName: "no-such-agent",
+        home: FIXTURE_HOME,
       }),
     )
     expect(error.code).toEqual("AGENT_NOT_IN_INVENTORY")
     expect(error.message).toContain("no-such-agent")
     expect(error.message).toContain("runtime inventory")
   } finally {
-    repo.cleanup()
-  }
-})
-
-test("a declaration merged away by the resolved runtime config reports an external origin", async () => {
-  const repo = createFixtureRepository()
-  try {
-    const runtime = createFakeRuntime({
-      configOverride: (config) => {
-        config.permission.bash = { "*": "deny" }
-      },
-    })
-    const report = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
-      runtime,
-      agentName: "ghost",
-    })
-    const byPosition = Object.fromEntries(report.agents[0].rules.map((rule) => [rule.position, rule]))
-
-    expect(byPosition[12].origin).toEqual({ scope: "external", source: null })
-    expect(byPosition[29].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-  } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
 
 test("malformed agent frontmatter is rejected with the source path", async () => {
-  const repo = createFixtureRepository()
+  const repository = createFixtureRepository()
   try {
-    writeFileSync(
-      join(repo.root, ".opencode", "agents", "ghost.md"),
-      "---\npermission:\n  edit:\n    \"*\": true\n---\n",
-    )
+    writeFileSync(join(repository.root, ".opencode", "agents", "ghost.md"), "---\npermission:\n  edit:\n    \"*\": true\n---\n")
 
     const error = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
+      createEffectivePolicyReport({
+        repositoryRoot: repository.root,
+        runtime: createFakeRuntime(),
+        agentName: "ghost",
+        home: FIXTURE_HOME,
+      }),
     )
     expect(error.code).toEqual("INSPECTION_SOURCE_MALFORMED")
     expect(error.message).toContain("ghost.md")
   } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
 
-test("agent frontmatter accepts blank lines, comments, later top-level keys, quoted keys, and CRLF", async () => {
-  const repo = createFixtureRepository()
+test("inspection leaves fixture policy sources byte-for-byte intact", async () => {
+  const repository = createFixtureRepository()
   try {
-    writeFileSync(join(repo.root, ".opencode", "agents", "ghost.md"), TOLERANT_FRONTMATTER)
-    const runtime = createFakeRuntime({
-      configOverride: (config) => {
-        config.agent.ghost.permission.read["*.env.example"] = "allow"
-      },
+    await createAgentListReport({ repositoryRoot: repository.root, runtime: createFakeRuntime() })
+    await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime: createFakeRuntime(),
+      agentName: "ghost",
+      home: FIXTURE_HOME,
     })
-    const report = await createEffectivePolicyReport({ repositoryRoot: repo.root, runtime, agentName: "ghost" })
+    await createEffectivePolicyReport({ repositoryRoot: repository.root, runtime: createFakeRuntime(), home: FIXTURE_HOME })
+
+    expect(readFileSync(join(repository.root, "opencode.json"), "utf8")).toEqual(OPENCODE_JSON_FIXTURE)
+    expect(readFileSync(join(repository.root, "opencode.jsonc"), "utf8")).toEqual(OPENCODE_JSONC_FIXTURE)
+    expect(readFileSync(join(repository.root, ".opencode", "agents", "ghost.md"), "utf8")).toEqual(AGENT_MD_FIXTURE)
+    expect(readFileSync(join(repository.root, ".opencode", "modes", "build.md"), "utf8")).toEqual(MODES_BUILD_MD_FIXTURE)
+    expect(readdirSync(join(repository.root, ".opencode", "agents")).sort()).toEqual(["ghost.md"])
+    expect(readdirSync(join(repository.root, ".opencode", "modes")).sort()).toEqual(["build.md"])
+  } finally {
+    repository.cleanup()
+  }
+})
+
+test("reports unknown origins across the agent when the runtime report omits a config document", async () => {
+  const repository = createFixtureRepository()
+  try {
+    const report = await createEffectivePolicyReport({
+      repositoryRoot: repository.root,
+      runtime: createFakeRuntime({
+        configEntriesOverride: (entries) =>
+          entries.filter((entry) => entry.type === "directory" || !entry.path?.startsWith(repository.root)),
+      }),
+      agentName: "ghost",
+      home: FIXTURE_HOME,
+    })
     const byPosition = rulesByPosition(report)
 
-    expect(byPosition[11].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-    expect(byPosition[18].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-    expect(byPosition[18].overrides).toEqual([{ scope: "agent", source: "opencode.json" }])
-    expect(byPosition[30].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-    expect(byPosition[13].origin).toEqual({ scope: "shared", source: "opencode.json" })
-    expect(byPosition[22].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
+    expect(byPosition[5].origin).toEqual(UNKNOWN)
+    expect(byPosition[9].origin).toEqual(UNKNOWN)
+    expect(byPosition[11].origin).toEqual(UNKNOWN)
+    expect(byPosition[27].origin).toEqual({ scope: "agent", source: GHOST_MD })
   } finally {
-    repo.cleanup()
-  }
-})
-
-test("unsupported frontmatter outside the permission section does not block inspection", async () => {
-  const repo = createFixtureRepository()
-  try {
-    writeFileSync(
-      join(repo.root, ".opencode", "agents", "ghost.md"),
-      [
-        "---",
-        "description: some agent",
-        "mode: all",
-        "custom: { flow: mapping }",
-        "tool:",
-        "  - list",
-        "permission:",
-        "  read:",
-        "    '*.env.example': allow",
-        "hidden: true",
-        "---",
-      ].join("\n"),
-    )
-    const runtime = createFakeRuntime({
-      configOverride: (config) => {
-        config.agent.ghost.permission.read["*.env.example"] = "allow"
-      },
-    })
-    const report = await createEffectivePolicyReport({ repositoryRoot: repo.root, runtime, agentName: "ghost" })
-
-    expect(report.agents[0].rules[11].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("unsupported permission declaration syntax fails explicitly with source context", async () => {
-  const repo = createFixtureRepository()
-  try {
-    const cases = [
-      ["permission: deny\n", "permission"],
-      ["permission: { edit: deny }\n", "permission"],
-      ["permission:\n  edit: deny\npermission:\n  edit: allow\n", "duplicate"],
-    ]
-    for (const [frontmatter, fragment] of cases) {
-      writeFileSync(join(repo.root, ".opencode", "agents", "ghost.md"), `---\n${frontmatter}---\n`)
-      const error = await captureRejection(
-        createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-      )
-      expect(error.code).toEqual("INSPECTION_SOURCE_MALFORMED")
-      expect(error.message).toContain("ghost.md")
-      expect(error.message).toContain(fragment)
-    }
-  } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })

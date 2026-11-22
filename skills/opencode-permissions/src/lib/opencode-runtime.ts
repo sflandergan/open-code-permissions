@@ -4,8 +4,15 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { ChildProcess } from "node:child_process"
 import { toAbsolutePath } from "./absolute-path"
-import { isPermissionAction, PERMISSION_ACTIONS } from "./types"
-import type { AgentListEntry, OpenCodeRuntime, PermissionRule, ResolvedAgentConfig, ResolvedConfig } from "./types"
+import { isAgentMode, isPermissionEffect, PERMISSION_EFFECTS } from "./types"
+import type {
+  ConfigAgentDeclaration,
+  ConfigDocumentEntry,
+  ConfigEntry,
+  OpenCodeRuntime,
+  RuntimeAgent,
+  RuntimeRule,
+} from "./types"
 
 // Default timeout for every OpenCode CLI invocation.
 const DEFAULT_TIMEOUT_MS = 15_000
@@ -35,36 +42,12 @@ const MINIMAL_PLATFORM_VARS = new Set([
   "LC_TIME",
 ])
 
-const VALID_MODES = new Set(["primary", "subagent", "all"])
-
-// `opencode agent list` prints one block per enabled agent: a header line with
-// the agent name and mode, followed by the indented JSON permission array.
-// The runtime normally terminates the whole output with a newline after the
-// final closing bracket. Some large responses omit only that newline, which is
-// still complete when the final closing bracket is present.
-const AGENT_BLOCK_HEADER = /^(?<name>[^\s()]+)\s+\((?<mode>[a-z]+)\)\s*$/
-// The runtime indents the array opening `[` by two spaces but prints the
-// closing `]` at column zero.
-const ARRAY_OPEN_LINE = /^  \[$/
-const ARRAY_CLOSE_LINE = /^\]$/
-
 /** Injected child-process and environment settings for the CLI adapter. */
 export type OpenCodeRuntimeDeps = {
   execFile: typeof import("node:child_process").execFile
   spawn?: typeof import("node:child_process").spawn
   env?: Record<string, string | undefined>
   timeoutMs?: number
-}
-
-/** Parsed header of one agent block in `opencode agent list` output. */
-interface AgentBlockHeader {
-  name: string
-  mode: string
-}
-
-/** One agent block split from `opencode agent list` output. */
-interface AgentBlock extends AgentBlockHeader {
-  body: string[]
 }
 
 type UnknownRecord = Record<string, unknown>
@@ -82,16 +65,11 @@ type RunCommand = (operation: string, args: string[], cwd: string) => Promise<st
  * responses sent through a pipe. Errors carry an operation name and the exact
  * command in their message plus a machine-readable `code`.
  *
- * The adapter only ever constructs the three approved command arrays; in
- * particular it never builds `debug agent --tool` because that option executes
- * a tool, and it never probes the runtime version because the report contract
- * does not carry one.
- *
- * `listAgents` runs the command a second time only when the first output is
- * classified as truncated; the final truncation error then reports both
- * attempts. Every other failure surfaces after a single call. A missing
- * `opencode` executable raises `OPENCODE_UNAVAILABLE` with an installation
- * message.
+ * The adapter only ever constructs the two approved read-only command arrays:
+ * `debug agents` and `debug config`. In particular it never probes the
+ * runtime version and never runs other debug subcommands, which can execute
+ * tools or dump process memory. A missing `opencode` executable raises
+ * `OPENCODE_UNAVAILABLE` with an installation message.
  */
 export function createOpenCodeRuntime({
   execFile,
@@ -104,18 +82,14 @@ export function createOpenCodeRuntime({
   const runCommand = createCommandRunner(execFile, spawn, sanitizedEnv, timeoutMs)
 
   return {
-    async listAgents(cwd: string): Promise<AgentListEntry[]> {
-      return runListAgentsWithRetry(runCommand, "listAgents", ["agent", "list"], cwd)
+    async readAgentInventory(cwd: string): Promise<RuntimeAgent[]> {
+      const stdout = await runCommand("readAgentInventory", ["debug", "agents"], cwd)
+      return parseAgentInventory(stdout, "readAgentInventory")
     },
 
-    async readResolvedConfig(cwd: string): Promise<ResolvedConfig> {
-      const stdout = await runCommand("readResolvedConfig", ["debug", "config"], cwd)
-      return parseConfigJson(stdout, "readResolvedConfig")
-    },
-
-    async readResolvedAgentConfig(name: string, cwd: string): Promise<ResolvedAgentConfig> {
-      const stdout = await runCommand("readResolvedAgentConfig", ["debug", "agent", name], cwd)
-      return parseAgentJson(stdout, name, "readResolvedAgentConfig")
+    async readConfigEntries(cwd: string): Promise<ConfigEntry[]> {
+      const stdout = await runCommand("readConfigEntries", ["debug", "config"], cwd)
+      return parseConfigEntries(stdout, "readConfigEntries")
     },
   }
 }
@@ -240,45 +214,6 @@ function watchChild(
 }
 
 /**
- * Run `opencode agent list` and parse it, retrying exactly once when the
- * first output is classified as truncated. Every other failure class
- * propagates after a single attempt, and a truncating retry is never retried
- * again.
- */
-async function runListAgentsWithRetry(
-  runCommand: RunCommand,
-  operation: string,
-  args: string[],
-  cwd: string,
-): Promise<AgentListEntry[]> {
-  try {
-    return await runListAgentsOnce(runCommand, operation, args, cwd)
-  } catch (firstError) {
-    if (errorCode(firstError) !== "OPENCODE_OUTPUT_TRUNCATED") throw firstError
-    try {
-      return await runListAgentsOnce(runCommand, operation, args, cwd)
-    } catch (secondError) {
-      if (errorCode(secondError) !== "OPENCODE_OUTPUT_TRUNCATED") throw secondError
-      const detail = truncationDetail(secondError) ?? "output truncated"
-      throw truncatedAgentListError(operation, `${detail} (still truncated after 2 attempts)`)
-    }
-  }
-}
-
-/**
- * Run `opencode agent list` once and parse the agent inventory.
- */
-async function runListAgentsOnce(
-  runCommand: RunCommand,
-  operation: string,
-  args: string[],
-  cwd: string,
-): Promise<AgentListEntry[]> {
-  const stdout = await runCommand(operation, args, cwd)
-  return parseAgentList(stdout, operation)
-}
-
-/**
  * Copy only the minimal platform variables from the inherited environment.
  */
 function sanitizeEnvironment(env: Record<string, string | undefined>): Record<string, string> {
@@ -327,251 +262,252 @@ function executionError(operation: string, args: string[], cause: unknown): Erro
 }
 
 /**
- * Parse the multiline `opencode agent list` output into validated agent
- * records. Each block is a header line followed by the indented JSON array of
- * resolved rules; rule order is preserved exactly.
- *
- * Output without the runtime's terminal newline is considered truncated when
- * it does not end at a final closing bracket. A complete final bracket is
- * enough to parse the report safely; a missing bracket still gets the
- * dedicated truncation code so the caller can retry once.
+ * Parse the `opencode debug agents` output into the validated agent
+ * inventory, preserving the runtime's order and each agent's complete
+ * ordered rule array.
  */
-function parseAgentList(stdout: string, operation: string): AgentListEntry[] {
-  if (!stdout.endsWith("\n") && !stdout.endsWith("]")) {
-    throw truncatedAgentListError(operation, "output lacks the runtime's terminal newline")
-  }
-  return splitAgentBlocks(stdout, operation).map((chunk) => {
-    const block = parseAgentBlockBody(chunk, operation)
-    return {
-      name: chunk.name,
-      mode: chunk.mode,
-      rules: parseRuleArray(block, operation, chunk.name),
-    }
-  })
-}
-
-/**
- * Split the agent-list output into per-agent chunks at header lines. Rule
- * body lines are always indented, so a line matching the header expression
- * can only be a new block header.
- */
-function splitAgentBlocks(stdout: string, operation: string): AgentBlock[] {
-  const lines = stdout.replace(/\r\n/g, "\n").split("\n")
-  const chunks: AgentBlock[] = []
-  let current: AgentBlock | null = null
-
-  for (const line of lines) {
-    if (line.trim() === "") continue
-    const header = parseAgentHeader(line)
-    if (header !== null) {
-      if (!VALID_MODES.has(header.mode)) {
-        throw runtimeError(
-          "OPENCODE_CONTRACT_UNSUPPORTED",
-          `${operation} (opencode agent list): unsupported mode "${header.mode}" for agent "${header.name}"`,
-        )
-      }
-      if (current !== null) chunks.push(current)
-      current = { name: header.name, mode: header.mode, body: [] }
-    } else if (current === null) {
-      throw runtimeError(
-        "OPENCODE_CONTRACT_UNSUPPORTED",
-        `${operation} (opencode agent list): unexpected block header line "${line}"`,
-      )
-    } else {
-      current.body.push(line)
-    }
-  }
-  if (current !== null) chunks.push(current)
-  return chunks
-}
-
-/**
- * Match one agent block header line, returning its name and mode or null when
- * the line is not a header.
- */
-function parseAgentHeader(line: string): AgentBlockHeader | null {
-  const match = AGENT_BLOCK_HEADER.exec(line)
-  if (match === null) return null
-  const name = match.groups?.name
-  const mode = match.groups?.mode
-  if (name === undefined || mode === undefined) return null
-  return { name, mode }
-}
-
-/**
- * Validate one agent block: a header-only block is an empty permission
- * array; otherwise the body must open with the indented `[` and close with a
- * column-zero `]`, and nothing may follow the close. A block whose array
- * never closes means the output was cut off and is classified as truncated.
- * Non-empty content after the close only survives the terminal-newline guard
- * in parseAgentList when the runtime emitted it verbatim, so it violates the
- * captured contract and is rejected as unsupported.
- */
-function parseAgentBlockBody(chunk: AgentBlock, operation: string): string[] {
-  if (chunk.body.length === 0) return []
-  if (!ARRAY_OPEN_LINE.test(chunk.body[0])) {
-    throw runtimeError(
-      "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode agent list): expected permission array after header for agent "${chunk.name}"`,
-    )
-  }
-  const closeIndex = chunk.body.findIndex((line) => ARRAY_CLOSE_LINE.test(line))
-  if (closeIndex === -1) {
-    throw truncatedAgentListError(operation, `unterminated permission array for agent "${chunk.name}"`)
-  }
-  const trailing = chunk.body.slice(closeIndex + 1).find((line) => line.trim() !== "")
-  if (trailing !== undefined) {
-    throw runtimeError(
-      "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode agent list): unexpected trailing content after the permission array for agent "${chunk.name}": "${trailing}"`,
-    )
-  }
-  return chunk.body.slice(1, closeIndex)
-}
-
-/**
- * Parse and validate the indented JSON rule array of one agent-list block.
- *
- * Captured output separates rules with `},` and closes the array with a
- * column-zero `]` and no trailing comma. As a compatibility guard for
- * runtimes that do print a trailing comma before the closing bracket, a comma
- * at end of line directly before `]` is dropped; JSON strings cannot contain
- * raw newlines, so the comma can never be inside a string.
- */
-function parseRuleArray(lines: string[], operation: string, agentName: string): PermissionRule[] {
-  const text = `[${lines.join("\n")}\n]`.replace(/,\n(?<indent>\s*)\]/g, "\n$<indent>]")
-  let value: unknown
-  try {
-    value = JSON.parse(text)
-  } catch (cause) {
-    throw runtimeError(
-      "OPENCODE_OUTPUT_INVALID_JSON",
-      `${operation} (opencode agent list): rule array for agent "${agentName}" is not valid JSON: ${messageOf(cause) ?? ""}`,
-    )
-  }
+function parseAgentInventory(stdout: string, operation: string): RuntimeAgent[] {
+  const value = parseJson(stdout, operation, "opencode debug agents")
   if (!Array.isArray(value)) {
     throw runtimeError(
       "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode agent list): rule body for agent "${agentName}" is not an array`,
+      `${operation} (opencode debug agents): expected an array of agent records, got ${describeValue(value)}`,
     )
   }
-  return value.map((rule, index) => validateRule(rule, index, agentName, operation))
+  return value.map((record, index) => readAgentRecord(record, index, operation))
 }
 
 /**
- * Parse and validate the resolved configuration object of
- * `opencode debug config`.
+ * Validate one agent record of `debug agents`, ignoring fields the report
+ * does not consume.
  */
-function parseConfigJson(stdout: string, operation: string): ResolvedConfig {
-  const value = parseJson(stdout, operation, "opencode debug config")
+function readAgentRecord(value: unknown, index: number, operation: string): RuntimeAgent {
   const record = asRecord(value)
   if (record === null) {
     throw runtimeError(
       "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode debug config): expected a JSON object, got ${describeValue(value)}`,
+      `${operation} (opencode debug agents): agent at index ${index} is ${describeValue(value)}, expected an object`,
     )
   }
-  for (const key of ["permission", "agent"]) {
-    const field = record[key]
-    if (field !== undefined && asRecord(field) === null) {
-      throw runtimeError(
-        "OPENCODE_CONTRACT_UNSUPPORTED",
-        `${operation} (opencode debug config): "${key}" must be an object`,
-      )
-    }
-  }
-  const agent = record.agent === undefined ? undefined : (record.agent as UnknownRecord)
-  if (agent !== undefined) {
-    for (const [name, definition] of Object.entries(agent)) {
-      if (asRecord(definition) === null) {
-        throw runtimeError(
-          "OPENCODE_CONTRACT_UNSUPPORTED",
-          `${operation} (opencode debug config): agent "${name}" must be an object`,
-        )
-      }
-    }
-  }
-  const permission = record.permission === undefined ? undefined : (record.permission as UnknownRecord)
-  return { permission, agent }
-}
-
-/**
- * Parse and validate the resolved agent configuration object of
- * `opencode debug agent <name>`.
- */
-function parseAgentJson(stdout: string, requestedName: string, operation: string): ResolvedAgentConfig {
-  const value = parseJson(stdout, operation, `opencode debug agent ${requestedName}`)
-  const record = asRecord(value)
-  if (record === null) {
+  const id = requireStringField(record, "id", `agent at index ${index}`, operation)
+  const identity = requireAgentIdentity(record, id, operation)
+  if (!Array.isArray(record.permissions)) {
     throw runtimeError(
       "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode debug agent ${requestedName}): expected a JSON object, got ${describeValue(value)}`,
+      `${operation} (opencode debug agents): agent "${id}" is missing a "permissions" array`,
     )
   }
-  validateAgentMetadata(record, requestedName, operation)
-  if (!Array.isArray(record.permission)) {
-    throw runtimeError(
-      "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode debug agent ${requestedName}): "permission" must be an array`,
-    )
-  }
-  const name = record.name as string
   return {
-    name,
-    mode: record.mode as string,
-    native: record.native as boolean | undefined,
-    permission: record.permission.map((rule, index) => validateRule(rule, index, name, operation)),
+    id,
+    ...identity,
+    permissions: record.permissions.map((rule, position) => readRuntimeRule(rule, position, id, operation)),
   }
 }
 
 /**
- * Validate the identity fields of a debug-agent record: name against the
- * request, mode against the known set, and native as a boolean when present.
+ * Validate one agent record's display fields: name, mode, and hidden flag.
  */
-function validateAgentMetadata(record: UnknownRecord, requestedName: string, operation: string): void {
+function requireAgentIdentity(record: UnknownRecord, id: string, operation: string): { name: string; mode: RuntimeAgent["mode"]; hidden: boolean } {
   if (typeof record.name !== "string") {
     throw runtimeError(
       "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode debug agent ${requestedName}): missing string "name" field`,
+      `${operation} (opencode debug agents): agent "${id}" is missing a string "name" field`,
     )
   }
-  if (record.name !== requestedName) {
-    throw runtimeError(
-      "OPENCODE_AGENT_MISMATCH",
-      `${operation} (opencode debug agent ${requestedName}): agent-name mismatch, expected "${requestedName}", got "${record.name}"`,
-    )
-  }
-  if (typeof record.mode !== "string" || !VALID_MODES.has(record.mode)) {
+  if (!isAgentMode(record.mode)) {
     throw runtimeError(
       "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode debug agent ${requestedName}): unsupported mode ${JSON.stringify(record.mode)}`,
+      `${operation} (opencode debug agents): agent "${id}" has unsupported mode ${JSON.stringify(record.mode)}`,
     )
   }
-  if (record.native !== undefined && typeof record.native !== "boolean") {
+  if (typeof record.hidden !== "boolean") {
     throw runtimeError(
       "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation} (opencode debug agent ${requestedName}): "native" must be a boolean when present`,
+      `${operation} (opencode debug agents): agent "${id}" is missing a boolean "hidden" field`,
     )
+  }
+  return { name: record.name, mode: record.mode, hidden: record.hidden }
+}
+
+/**
+ * Parse the `opencode debug config` output into the validated ordered entry
+ * list.
+ */
+function parseConfigEntries(stdout: string, operation: string): ConfigEntry[] {
+  const value = parseJson(stdout, operation, "opencode debug config")
+  if (!Array.isArray(value)) {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation} (opencode debug config): expected an array of config entries, got ${describeValue(value)}`,
+    )
+  }
+  return value.map((entry, index) => readConfigEntry(entry, index, operation))
+}
+
+/**
+ * Validate one config entry of `debug config`: a document with an optional
+ * absolute path and the normalized info object, or a directory with its
+ * absolute path.
+ */
+function readConfigEntry(value: unknown, index: number, operation: string): ConfigEntry {
+  const record = asRecord(value)
+  if (record === null) {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation} (opencode debug config): entry ${index} is ${describeValue(value)}, expected an object`,
+    )
+  }
+  if (record.type === "document") return readDocumentEntry(record, index, operation)
+  if (record.type === "directory") {
+    if (typeof record.path !== "string") {
+      throw runtimeError(
+        "OPENCODE_CONTRACT_UNSUPPORTED",
+        `${operation} (opencode debug config): directory entry ${index} is missing a string "path"`,
+      )
+    }
+    return { type: "directory", path: record.path }
+  }
+  throw runtimeError(
+    "OPENCODE_CONTRACT_UNSUPPORTED",
+    `${operation} (opencode debug config): entry ${index} has unsupported type ${JSON.stringify(record.type)}`,
+  )
+}
+
+/**
+ * Read one validated document entry: its optional absolute path and the
+ * normalized permission sections of its info object.
+ */
+function readDocumentEntry(record: UnknownRecord, index: number, operation: string): ConfigDocumentEntry {
+  const path = record.path === undefined ? null : record.path
+  if (typeof path !== "string" && path !== null) {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation} (opencode debug config): document entry ${index} has a non-string "path"`,
+    )
+  }
+  const info = asRecord(record.info)
+  if (info === null) {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation} (opencode debug config): document entry ${index} is missing an "info" object`,
+    )
+  }
+  const context = path === null ? `document entry ${index}` : path
+  return {
+    type: "document",
+    path,
+    permissions: readPermissionList(info.permissions, `${context} permissions`, operation),
+    agents: readAgentDeclarations(info.agents, `${context} agents`, operation),
   }
 }
 
 /**
- * Parse runtime stdout as JSON, translating the runtime's agent-not-found
- * message and malformed output into coded errors with operation context.
+ * Validate one required string field of a runtime record, rejecting a
+ * missing, empty, or non-string value with operation context.
+ */
+function requireStringField(record: UnknownRecord, field: string, owner: string, operation: string): string {
+  const value = record[field]
+  if (typeof value !== "string" || value === "") {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation}: ${owner} is missing a string "${field}" field`,
+    )
+  }
+  return value
+}
+
+/**
+ * Read the normalized agent declarations of one document, ignoring records
+ * the report does not consume.
+ */
+function readAgentDeclarations(value: unknown, context: string, operation: string): Record<string, ConfigAgentDeclaration> {
+  if (value === undefined || value === null) return {}
+  const record = asRecord(value)
+  if (record === null) {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation} (opencode debug config): ${context} must be an object`,
+    )
+  }
+  const agents: Record<string, ConfigAgentDeclaration> = {}
+  for (const [agentId, declaration] of Object.entries(record)) {
+    const definition = asRecord(declaration)
+    if (definition === null) {
+      throw runtimeError(
+        "OPENCODE_CONTRACT_UNSUPPORTED",
+        `${operation} (opencode debug config): ${context} entry "${agentId}" is ${describeValue(declaration)}, expected an object`,
+      )
+    }
+    agents[agentId] = {
+      disabled: typeof definition.disabled === "boolean" ? definition.disabled : undefined,
+      permissions: readPermissionList(
+        definition.permissions,
+        `${context} ${agentId} permissions`,
+        operation,
+      ),
+    }
+  }
+  return agents
+}
+
+/**
+ * Read one ordered permission list from a document, rejecting malformed
+ * rules with their position.
+ */
+function readPermissionList(value: unknown, context: string, operation: string): RuntimeRule[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation} (opencode debug config): ${context} must be an array of rules`,
+    )
+  }
+  return value.map((rule, position) => readRuntimeRule(rule, position, context, operation))
+}
+
+/**
+ * Validate one runtime rule record at the given position of the named owner.
+ * Actions and resources are preserved exactly as reported, including
+ * spellings the report cannot attribute; only the effect must name a
+ * supported permission effect.
+ */
+function readRuntimeRule(value: unknown, position: number, owner: string, operation: string): RuntimeRule {
+  const record = asRecord(value)
+  if (record === null) {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation}: rule ${position} for "${owner}" is ${describeValue(value)}, expected an object`,
+    )
+  }
+  if (typeof record.action !== "string") {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation}: rule ${position} for "${owner}" is missing a string "action" field`,
+    )
+  }
+  if (typeof record.resource !== "string") {
+    throw runtimeError(
+      "OPENCODE_CONTRACT_UNSUPPORTED",
+      `${operation}: rule ${position} for "${owner}" is missing a string "resource" field`,
+    )
+  }
+  if (!isPermissionEffect(record.effect)) {
+    throw runtimeError(
+      "OPENCODE_INVALID_EFFECT",
+      `${operation}: rule ${position} for "${owner}" has invalid effect ${JSON.stringify(record.effect)}; expected one of ${PERMISSION_EFFECTS.join("|")}`,
+    )
+  }
+  return { action: record.action, resource: record.resource, effect: record.effect }
+}
+
+/**
+ * Parse runtime stdout as JSON, translating malformed output into a coded
+ * error with operation and command context.
  */
 function parseJson(stdout: string, operation: string, command: string): unknown {
   try {
     return JSON.parse(stdout)
   } catch (cause) {
-    const trimmed = stdout.trim()
-    const notFound = /^Agent (?<agentName>.+) not found, run 'opencode agent list'/.exec(trimmed)
-    if (notFound !== null) {
-      const agentName = notFound.groups?.agentName ?? ""
-      throw runtimeError(
-        "OPENCODE_AGENT_NOT_FOUND",
-        `${operation} (${command}): agent "${agentName}" is not in the runtime inventory`,
-      )
-    }
     throw runtimeError(
       "OPENCODE_OUTPUT_INVALID_JSON",
       `${operation} (${command}): runtime output is not valid JSON: ${messageOf(cause) ?? ""}`,
@@ -580,56 +516,10 @@ function parseJson(stdout: string, operation: string, command: string): unknown 
 }
 
 /**
- * Validate one resolved rule: string permission and pattern, action in
- * allow|ask|deny. Returns a fresh copy so callers cannot share mutable state.
- */
-function validateRule(rule: unknown, index: number, agentName: string, operation: string): PermissionRule {
-  const record = asRecord(rule)
-  if (record === null) {
-    throw runtimeError(
-      "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation}: rule ${index} for agent "${agentName}" is ${describeValue(rule)}, expected an object`,
-    )
-  }
-  if (typeof record.permission !== "string") {
-    throw runtimeError(
-      "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation}: rule ${index} for agent "${agentName}" is missing a string "permission" field`,
-    )
-  }
-  if (typeof record.pattern !== "string") {
-    throw runtimeError(
-      "OPENCODE_CONTRACT_UNSUPPORTED",
-      `${operation}: rule ${index} for agent "${agentName}" is missing a string "pattern" field`,
-    )
-  }
-  if (!isPermissionAction(record.action)) {
-    throw runtimeError(
-      "OPENCODE_INVALID_ACTION",
-      `${operation}: rule ${index} for agent "${agentName}" has invalid action "${String(record.action)}"; expected one of ${PERMISSION_ACTIONS.join("|")}`,
-    )
-  }
-  return { permission: record.permission, pattern: record.pattern, action: record.action }
-}
-
-/**
  * Build a runtime error carrying a machine-readable code.
  */
 function runtimeError(code: string, message: string): Error & { code: string } {
   return Object.assign(new Error(message), { code })
-}
-
-/**
- * Truncation error for `opencode agent list` output that ends inside a
- * permission array. This is the only error class listAgents retries; the
- * detail names the affected block so the final two-attempt error stays
- * contextual.
- */
-function truncatedAgentListError(operation: string, detail: string): Error & { code: string; truncationDetail: string } {
-  return Object.assign(
-    runtimeError("OPENCODE_OUTPUT_TRUNCATED", `${operation} (opencode agent list): truncated agent-list output: ${detail}`),
-    { truncationDetail: detail },
-  )
 }
 
 /**
@@ -673,13 +563,4 @@ function messageOf(cause: unknown): string | undefined {
 function stderrOf(cause: unknown): unknown {
   if (typeof cause !== "object" || cause === null) return undefined
   return (cause as { stderr?: unknown }).stderr
-}
-
-/**
- * Read the `truncationDetail` field of an error-like value.
- */
-function truncationDetail(cause: unknown): string | undefined {
-  if (typeof cause !== "object" || cause === null) return undefined
-  const detail = (cause as { truncationDetail?: unknown }).truncationDetail
-  return typeof detail === "string" ? detail : undefined
 }

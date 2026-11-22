@@ -1,79 +1,83 @@
-{
-  "$schema": "https://opencode.ai/config.json",
-  "permission": {
-    "bash": {
-      "*": "ask"
-    },
-    "edit": {
-      "*": "deny"
-    },
-    "read": {
-      "*": "allow"
-    },
-    "skill": {
-      "legacy-skill": "deny",
-      "opencode-permission-optimizer": "deny"
-    },
-    "webfetch": "ask"
-  },
-  "agent": {
-    "plan": {
-      "disable": true,
-      "options": {},
-      "permission": {}
-    },
-    "build": {
-      "disable": true,
-      "options": {},
-      "permission": {}
-    },
-    "explore": {
-      "model": "openai/gpt-5.6-sol",
-      "options": {},
-      "permission": {}
-    },
-    "ghost": {
-      "hidden": true,
-      "description": "hidden fixture agent",
-      "permission": {
-        "read": {
-          "opencode.json": "allow",
-          "*": "deny",
-          ".opencode/agents/*.md": "allow",
-          ".agents/skills/opencode-permission-optimizer/**": "allow"
-        },
-        "edit": {
-          "*": "deny"
-        },
-        "write": {
-          "*": "deny"
-        },
-        "question": "allow",
-        "task": {
-          "*": "deny"
-        },
-        "skill": {
-          "*": "deny",
-          "legacy-skill": "allow",
-          "opencode-permission-optimizer": "allow"
-        },
-        "bash": {
-          "*": "deny",
-          "*>*": "deny",
-          "*<*": "deny",
-          "bash \"*/opencode-permission-optimizer/scripts/agent-permission-report.sh\" --agent *": "allow",
-          "ls": "allow",
-          "echo *": "allow"
+[
+  {
+    "type": "document",
+    "path": "/home/example/.config/opencode/opencode.json",
+    "info": {
+      "permissions": [
+        {
+          "action": "webfetch",
+          "resource": "example.test/*",
+          "effect": "deny"
         }
-      },
-      "options": {},
-      "name": "ghost",
-      "mode": "all",
-      "prompt": "# ghost"
+      ]
     }
   },
-  "mode": {},
-  "plugin": [],
-  "command": {},
-  "username": "sflandergan"
-}
+  {
+    "type": "document",
+    "path": "$REPOSITORY_ROOT/opencode.json",
+    "info": {
+      "permissions": [
+        {
+          "action": "read",
+          "resource": "*",
+          "effect": "allow"
+        },
+        {
+          "action": "skill",
+          "resource": "opencode-permission-optimizer",
+          "effect": "deny"
+        },
+        {
+          "action": "edit",
+          "resource": "*",
+          "effect": "deny"
+        }
+      ],
+      "agents": {
+        "plan": {
+          "disabled": true
+        },
+        "explore": {
+          "model": {
+            "providerID": "openai",
+            "model": "gpt-5.6-sol"
+          }
+        },
+        "ghost": {
+          "hidden": true,
+          "description": "hidden fixture agent",
+          "permissions": [
+            {
+              "action": "read",
+              "resource": "opencode.json",
+              "effect": "allow"
+            },
+            {
+              "action": "subagent",
+              "resource": "*",
+              "effect": "deny"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "document",
+    "path": "$REPOSITORY_ROOT/opencode.jsonc",
+    "info": {
+      "permissions": [
+        {
+          "action": "shell",
+          "resource": "*",
+          "effect": "ask"
+        }
+      ],
+      "agents": {}
+    }
+  },
+  {
+    "type": "directory",
+    "path": "$REPOSITORY_ROOT/.opencode"
+  }
+]

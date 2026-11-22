@@ -260,12 +260,12 @@ function fakeInspector(invocations: InspectorRequest[]): (args: InspectorRequest
   return (args) => {
     invocations.push(args)
     if (args.form === "list-agents") {
-      return { agents: [{ name: "implement", mode: "all", status: "custom" }] }
+      return { agents: [{ id: "implement", name: "implement", mode: "all", hidden: false }] }
     }
     return {
       agents: [{
-        name: "implement", mode: "all", status: "custom",
-        rules: [{ permission: "bash", pattern: "*", action: "ask", position: 0, origin: { scope: "shared", source: "opencode.json" }, overrides: [] }],
+        id: "implement", name: "implement", mode: "all", hidden: false,
+        rules: [{ action: "shell", resource: "*", effect: "ask", position: 0, origin: { scope: "shared", source: "opencode.json" } }],
       }],
     }
   }
@@ -330,7 +330,7 @@ test("exports repository, agent, counts, policy, and requested patterns for an a
     expect(summary.databaseState).toEqual("available")
     expect(summary.schemaVersion).toEqual(SCHEMA_VERSION)
     expect(summary.repository).toEqual({ identity: IDENTITY, worktree: cwd })
-    expect(summary.agent).toEqual({ name: "implement", mode: "all", status: "custom" })
+    expect(summary.agent).toEqual({ id: "implement", name: "implement", mode: "all" })
     expect(summary.counts).toEqual({
       observations: 1,
       approvals: 1,
@@ -361,12 +361,11 @@ test("exports repository, agent, counts, policy, and requested patterns for an a
     }])
     expect(summary.effectivePolicy).toEqual({
       rules: [{
-        permission: "bash",
-        pattern: "*",
-        action: "ask",
+        action: "shell",
+        resource: "*",
+        effect: "ask",
         position: 0,
         origin: { scope: "shared", source: "opencode.json" },
-        overrides: [],
       }],
     })
     expect(invocations).toHaveLength(2)

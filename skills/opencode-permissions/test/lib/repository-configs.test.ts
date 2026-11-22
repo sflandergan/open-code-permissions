@@ -1,350 +1,318 @@
-import { expect, test } from "bun:test"
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { describe, expect, test } from "bun:test"
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { createAgentListReport, createEffectivePolicyReport } from "../../src/lib/inspection"
 import {
-  captureRejection,
-  createFakeRuntime,
-  createFixtureRepository,
-  OPENCODE_JSONC_FIXTURE,
-  rulesByPosition,
-  TEMP_DIR,
-} from "../helpers/inspection-fixtures"
+  confirmConfigDocument,
+  discoverAgentFiles,
+  isCanonicallyContained,
+  readAgentFileRules,
+} from "../../src/lib/repository-configs"
+import { toAbsolutePath } from "../../src/lib/absolute-path"
+import type { AbsolutePath } from "../../src/lib/absolute-path"
+import type { ConfigDocumentEntry, RuntimeRule } from "../../src/lib/types"
+import { captureThrown } from "../helpers/inspection-fixtures"
 
-test("a symlinked agent source is rejected rather than followed", async () => {
-  const repo = createFixtureRepository()
-  try {
-    rmSync(join(repo.root, ".opencode", "agents", "ghost.md"))
-    symlinkSync("/etc/hosts", join(repo.root, ".opencode", "agents", "ghost.md"))
-
-    const error = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
-    expect(error.code).toEqual("INSPECTION_SOURCE_UNSUPPORTED")
-    expect(error.message).toContain("ghost.md")
-    expect(error.message).toContain("symbolic link")
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("a symlinked repository JSON configuration is rejected rather than followed", async () => {
-  const repo = createFixtureRepository()
-  try {
-    rmSync(join(repo.root, "opencode.json"))
-    symlinkSync("/etc/hosts", join(repo.root, "opencode.json"))
-
-    const error = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
-    expect(error.code).toEqual("INSPECTION_SOURCE_UNSUPPORTED")
-    expect(error.message).toContain("opencode.json")
-    expect(error.message).toContain("symbolic link")
-  } finally {
-    repo.cleanup()
-  }
-})
-
-/**
- * Create an outside directory whose ghost.md would fail with
- * INSPECTION_SOURCE_MALFORMED if read: an INSPECTION_SOURCE_UNSUPPORTED error
- * therefore proves the directory chain check fired before any candidate read
- * could escape the repository.
- */
-function createEscapeTrap(): string {
-  const outside = mkdtempSync(join(TEMP_DIR, "opencode-permissions-escape-"))
-  mkdirSync(join(outside, "agents"), { recursive: true })
-  writeFileSync(join(outside, "agents", "ghost.md"), "---\npermission: deny\n---\n")
-  return outside
+function rule(action: string, resource: string, effect: RuntimeRule["effect"]): RuntimeRule {
+  return { action, resource, effect }
 }
 
-test("a symlinked or non-directory agent source directory is rejected before any candidate read", async () => {
-  const repo = createFixtureRepository()
-  const outside = createEscapeTrap()
-  try {
-    rmSync(join(repo.root, ".opencode", "agents"), { recursive: true })
-    symlinkSync(join(outside, "agents"), join(repo.root, ".opencode", "agents"))
-    const symlinkedAgents = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
-    expect(symlinkedAgents.code).toEqual("INSPECTION_SOURCE_UNSUPPORTED")
-    expect(symlinkedAgents.message).toContain(".opencode/agents")
-    rmSync(join(repo.root, ".opencode", "agents"))
+interface Scratch {
+  root: AbsolutePath
+  cleanup: () => void
+}
 
-    rmSync(join(repo.root, ".opencode"), { recursive: true })
-    symlinkSync(outside, join(repo.root, ".opencode"))
-    const symlinkedRoot = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
-    expect(symlinkedRoot.code).toEqual("INSPECTION_SOURCE_UNSUPPORTED")
-    expect(symlinkedRoot.message).toContain(".opencode")
-    rmSync(join(repo.root, ".opencode"))
+function createScratch(): Scratch {
+  const root = toAbsolutePath(mkdtempSync(join(tmpdir(), "opencode-permissions-configs-")), "scratch root")
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }
+}
 
-    writeFileSync(join(repo.root, ".opencode"), "not a directory")
-    const fileRoot = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
-    expect(fileRoot.code).toEqual("INSPECTION_SOURCE_UNSUPPORTED")
-    expect(fileRoot.message).toContain(".opencode")
-  } finally {
-    rmSync(outside, { recursive: true, force: true })
-    repo.cleanup()
-  }
-})
+function write(root: AbsolutePath, relative: string, content: string): void {
+  const path = join(root, relative)
+  mkdirSync(join(path, ".."), { recursive: true })
+  writeFileSync(path, content)
+}
 
-test("a filesystem failure other than absence is rejected rather than read as a missing source", async () => {
-  const repo = createFixtureRepository()
-  try {
-    chmodSync(join(repo.root, ".opencode", "agents"), 0o000)
+describe("discoverAgentFiles", () => {
+  test("discovers agent and agents group files before mode and modes files, each sorted by path", () => {
+    const scratch = createScratch()
     try {
-      const unreadableAgent = await captureRejection(
-        createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-      )
-      expect(unreadableAgent.code).toEqual("INSPECTION_SOURCE_UNREADABLE")
-      expect(unreadableAgent.message).toContain(".opencode/agents")
-    } finally {
-      chmodSync(join(repo.root, ".opencode", "agents"), 0o755)
-    }
+      const directory = toAbsolutePath(join(scratch.root, ".opencode"), "fixture directory")
+      write(directory, "agents/b.md", "b")
+      write(directory, "agents/a.md", "a")
+      write(directory, "agent/c.md", "c")
+      write(directory, "modes/m.md", "m")
+      write(directory, "mode/n.md", "n")
 
-    chmodSync(join(repo.root, ".opencode"), 0o000)
+      const discovered = discoverAgentFiles(directory, scratch.root)
+
+      expect(discovered.map((file) => file.agentId)).toEqual(["c", "a", "b", "n", "m"])
+      expect(discovered.every((file) => file.editable)).toBeTruthy()
+    } finally {
+      scratch.cleanup()
+    }
+  })
+
+  test("derives nested agent ids and includes dotfiles while skipping ignored directories", () => {
+    const scratch = createScratch()
     try {
-      const unreadableDirectory = await captureRejection(
-        createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-      )
-      expect(unreadableDirectory.code).toEqual("INSPECTION_SOURCE_UNREADABLE")
-      expect(unreadableDirectory.message).toContain(".opencode")
+      const directory = toAbsolutePath(join(scratch.root, ".opencode"), "fixture directory")
+      write(directory, "agents/nested/deep.md", "deep")
+      write(directory, "agents/.hidden/secret.md", "secret")
+      write(directory, "agents/.dot.md", "dot")
+      write(directory, "agents/node_modules/installed.md", "installed")
+      write(directory, "agents/nested/.git/tracked.md", "tracked")
+      write(directory, "agents/.venv/packed.md", "packed")
+      write(directory, "agents/venv/also-packed.md", "also-packed")
+      write(directory, "agents/__pycache__/bytecode.md", "bytecode")
+
+      const discovered = discoverAgentFiles(directory, scratch.root)
+
+      expect(discovered.map((file) => file.agentId)).toEqual([".dot", ".hidden/secret", "nested/deep"])
     } finally {
-      chmodSync(join(repo.root, ".opencode"), 0o755)
+      scratch.cleanup()
     }
-  } finally {
-    repo.cleanup()
-  }
+  })
+
+  test("marks symlinked and escaping agent files as not editable but still discovers them", () => {
+    const sandboxRoot = toAbsolutePath(mkdtempSync(join(tmpdir(), "opencode-permissions-outside-")), "outside root")
+    const scratch = createScratch()
+    try {
+      write(sandboxRoot, "target.md", "---\npermissions:\n  - action: read\n    resource: \"x\"\n    effect: allow\n---\n")
+      write(scratch.root, ".opencode/agents/inside.md", "---\ndescription: x\n---\nbody\n")
+      mkdirSync(join(scratch.root, ".opencode", "agents"), { recursive: true })
+      symlinkSync(join(sandboxRoot, "target.md"), join(scratch.root, ".opencode", "agents", "linked.md"))
+      const directory = toAbsolutePath(join(scratch.root, ".opencode"), "fixture directory")
+
+      const discovered = discoverAgentFiles(directory, scratch.root)
+      const editable = Object.fromEntries(discovered.map((file) => [file.agentId, file.editable]))
+
+      expect(editable).toEqual({ inside: true, linked: false })
+      expect(readAgentFileRules(discovered.find((file) => file.agentId === "linked") ?? null)).toEqual([
+        rule("read", "x", "allow"),
+      ])
+    } finally {
+      scratch.cleanup()
+      rmSync(sandboxRoot, { recursive: true, force: true })
+    }
+  })
+
+  test("returns no files for a directory without agent definitions", () => {
+    const scratch = createScratch()
+    try {
+      expect(discoverAgentFiles(scratch.root, scratch.root)).toEqual([])
+      const missing = toAbsolutePath(join(scratch.root, "absent"), "missing directory")
+      expect(discoverAgentFiles(missing, scratch.root)).toEqual([])
+    } finally {
+      scratch.cleanup()
+    }
+  })
+
+  test("derives multiline agent ids from the directory position without the plugin", () => {
+    const scratch = createScratch()
+    try {
+      const directory = toAbsolutePath(join(scratch.root, ".opencode"), "fixture directory")
+      write(directory, "agents/sub/one.md", "1")
+      write(directory, "agents/sub/sub/two.md", "2")
+      expect(discoverAgentFiles(directory, scratch.root).map((file) => file.agentId)).toEqual(["sub/one", "sub/sub/two"])
+    } finally {
+      scratch.cleanup()
+    }
+  })
 })
 
-test("an unsafe agent name from the runtime is rejected before any file read", async () => {
-  const repo = createFixtureRepository()
-  try {
-    // A symlink outside .opencode/agents/: any repository file read there
-    // would fail with INSPECTION_SOURCE_UNSUPPORTED, so an AGENT_NAME_UNSAFE
-    // error proves the name was rejected before the filesystem was touched.
-    symlinkSync("/etc/hosts", join(repo.root, ".opencode", "evil.md"))
-    for (const unsafeName of ["ghost/evil", "ghost\\evil", "../evil", "a/../../evil", "/tmp/evil", "..", ".", ""]) {
-      const listRuntime = createFakeRuntime()
-      listRuntime.listAgents = async () => [{ name: unsafeName, mode: "primary", rules: [] }]
-      const listError = await captureRejection(createAgentListReport({ repositoryRoot: repo.root, runtime: listRuntime }))
-      expect(listError.code).toEqual("AGENT_NAME_UNSAFE")
-      expect(listError.message).toContain(JSON.stringify(unsafeName))
+describe("isCanonicallyContained", () => {
+  test("accepts paths inside the root and rejects outside or symlink-escaping paths", () => {
+    const outsideRoot = toAbsolutePath(mkdtempSync(join(tmpdir(), "opencode-permissions-outside-")), "outside root")
+    const scratch = createScratch()
+    try {
+      write(scratch.root, "opencode.json", "{}")
+      write(outsideRoot, "target.json", "{}")
+      symlinkSync(join(outsideRoot, "target.json"), join(scratch.root, "escape.json"))
 
-      const effectiveRuntime = createFakeRuntime()
-      effectiveRuntime.listAgents = async () => [{ name: unsafeName, mode: "primary", rules: [] }]
-      const effectiveError = await captureRejection(
-        createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: effectiveRuntime, agentName: unsafeName }),
+      expect(isCanonicallyContained(join(scratch.root, "opencode.json"), scratch.root)).toBeTruthy()
+      expect(isCanonicallyContained(join(outsideRoot, "target.json"), scratch.root)).toBeFalsy()
+      expect(isCanonicallyContained(join(scratch.root, "escape.json"), scratch.root)).toBeFalsy()
+      expect(isCanonicallyContained(join(scratch.root, "missing.json"), scratch.root)).toBeFalsy()
+    } finally {
+      scratch.cleanup()
+      rmSync(outsideRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("confirmConfigDocument", () => {
+  /**
+   * Build a document entry factory whose relative paths resolve inside the
+   * given root, the way the runtime reports config document paths.
+   */
+  function documentFor(root: AbsolutePath): (relativePath: string, info: Record<string, unknown>) => ConfigDocumentEntry {
+    return (relativePath, info) => ({
+      type: "document",
+      path: relativePath === "" ? null : join(root, relativePath),
+      permissions: [],
+      agents: {},
+      ...info,
+    }) as ConfigDocumentEntry
+  }
+
+  test("confirms the combined legacy and native shared blocks only in the runtime order", () => {
+    const scratch = createScratch()
+    const document = documentFor(scratch.root)
+    try {
+      write(
+        scratch.root,
+        "opencode.json",
+        JSON.stringify({
+          permission: { bash: { "git status": "allow" } },
+          permissions: [{ action: "read", resource: "*", effect: "allow" }],
+        }),
       )
-      expect(effectiveError.code).toEqual("AGENT_NAME_UNSAFE")
-      expect(effectiveError.message).toContain(JSON.stringify(unsafeName))
+      const entry = document("opencode.json", {
+        permissions: [rule("shell", "git status", "allow"), rule("read", "*", "allow")],
+      })
+      const reversed = document("opencode.json", {
+        permissions: [rule("read", "*", "allow"), rule("shell", "git status", "allow")],
+      })
+
+      expect(confirmConfigDocument(entry, scratch.root)).toBeTruthy()
+      expect(confirmConfigDocument(reversed, scratch.root)).toBeFalsy()
+    } finally {
+      scratch.cleanup()
     }
+  })
+
+  test("confirms a JSONC document with comments and trailing commas against its normalized report", () => {
+    const scratch = createScratch()
+    const document = documentFor(scratch.root)
+    try {
+      write(scratch.root, "opencode.jsonc", "// legacy shared policy\n{\n  \"permission\": {\n    \"bash\": { \"*\": \"ask\", },\n  },\n}\n")
+      const entry = document("opencode.jsonc", {
+        permissions: [rule("shell", "*", "ask")],
+      })
+
+      expect(confirmConfigDocument(entry, scratch.root)).toBeTruthy()
+    } finally {
+      scratch.cleanup()
+    }
+  })
+
+  test("compares agent declarations from legacy agent and mode blocks with mode records replacing agent records", () => {
+    const scratch = createScratch()
+    const document = documentFor(scratch.root)
+    try {
+      write(
+        scratch.root,
+        "opencode.json",
+        JSON.stringify({
+          agent: { x: { permission: { read: { "q": "allow" } } } },
+          mode: { x: { permission: { edit: { "w": "deny" } } } },
+          agents: {},
+        }),
+      )
+
+      const modeReported = document("opencode.json", {
+        agents: { x: { permissions: [rule("edit", "w", "deny")] } },
+      })
+      expect(confirmConfigDocument(modeReported, scratch.root)).toBeTruthy()
+
+      const agentReported = document("opencode.json", {
+        agents: { x: { permissions: [rule("read", "q", "allow")] } },
+      })
+      expect(confirmConfigDocument(agentReported, scratch.root)).toBeFalsy()
+    } finally {
+      scratch.cleanup()
+    }
+  })
+
+  test("compares native agent records after the legacy merge", () => {
+    const scratch = createScratch()
+    const document = documentFor(scratch.root)
+    try {
+      write(
+        scratch.root,
+        "opencode.json",
+        JSON.stringify({
+          agent: { x: { permission: { read: { "q": "allow" } } } },
+          agents: { x: { permissions: [{ action: "edit", resource: "w", effect: "deny" }] } },
+        }),
+      )
+
+      const nativeReported = document("opencode.json", {
+        agents: { x: { permissions: [rule("edit", "w", "deny")] } },
+      })
+      expect(confirmConfigDocument(nativeReported, scratch.root)).toBeTruthy()
+
+      const legacyReported = document("opencode.json", {
+        agents: { x: { permissions: [rule("read", "q", "allow")] } },
+      })
+      expect(confirmConfigDocument(legacyReported, scratch.root)).toBeFalsy()
+    } finally {
+      scratch.cleanup()
+    }
+  })
+
+  test("rejects confirmation when the bytes disagree with the reported rules", () => {
+    const scratch = createScratch()
+    const document = documentFor(scratch.root)
+    try {
+      write(scratch.root, "opencode.json", JSON.stringify({ permissions: [{ action: "read", resource: "*", effect: "allow" }] }))
+      const entry = document("opencode.json", {
+        permissions: [rule("read", "*", "deny")],
+      })
+
+      expect(confirmConfigDocument(entry, scratch.root)).toBeFalsy()
+    } finally {
+      scratch.cleanup()
+    }
+  })
+
+  test("rejects documents outside the repository, behind symlinks, with no path, or with unreadable bytes", () => {
+    const outsideRoot = toAbsolutePath(mkdtempSync(join(tmpdir(), "opencode-permissions-outside-")), "outside root")
+    const scratch = createScratch()
+    const document = documentFor(scratch.root)
+    try {
+      write(outsideRoot, "opencode.json", JSON.stringify({ permissions: [] }))
+      symlinkSync(join(outsideRoot, "opencode.json"), join(scratch.root, "linked.json"))
+
+      const outside = { type: "document", path: join(outsideRoot, "opencode.json"), permissions: [], agents: {} } as ConfigDocumentEntry
+      expect(confirmConfigDocument(outside, scratch.root)).toBeFalsy()
+      expect(confirmConfigDocument(document("linked.json", { permissions: [] }), scratch.root)).toBeFalsy()
+      expect(confirmConfigDocument(document("", { permissions: [] }), scratch.root)).toBeFalsy()
+      const malformed = document("opencode.json", {})
+      write(scratch.root, "opencode.json", "{ not json")
+      expect(() => confirmConfigDocument(malformed, scratch.root)).toThrow()
+    } finally {
+      scratch.cleanup()
+      rmSync(outsideRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+test("readAgentFileRules returns null for a file that disappeared after discovery", () => {
+  const scratch = createScratch()
+  try {
+    const directory = toAbsolutePath(join(scratch.root, ".opencode"), "fixture directory")
+    write(directory, "agents/ghost.md", "---\ndescription: gone\n---\nbody\n")
+    const discovered = discoverAgentFiles(directory, scratch.root)
+    expect(discovered.length).toEqual(1)
+    rmSync(join(directory, "agents", "ghost.md"))
+    expect(readAgentFileRules(discovered[0] ?? null)).toEqual(null)
   } finally {
-    repo.cleanup()
+    scratch.cleanup()
   }
 })
 
-test("agent names used by existing agents are accepted when every segment is safe", async () => {
-  const repo = createFixtureRepository()
+test("readAgentFileRules reports malformed agent frontmatter with the source path", () => {
+  const scratch = createScratch()
   try {
-    const runtime = createFakeRuntime()
-    runtime.listAgents = async () => [
-      { name: "ghost", mode: "all", rules: [] },
-      { name: "opencode-permissions", mode: "primary", rules: [] },
-      { name: "explore", mode: "subagent", rules: [] },
-      { name: "summary", mode: "primary", rules: [] },
-    ]
-    const report = await createAgentListReport({ repositoryRoot: repo.root, runtime })
-    const byName = Object.fromEntries(report.agents.map((agent) => [agent.name, agent]))
-
-    expect(report.agents.length).toEqual(4)
-    expect(byName.ghost.status).toEqual("custom")
-    expect(byName["opencode-permissions"].status).toEqual(null)
-    expect(byName.explore.status).toEqual("native")
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("malformed repository JSON configuration is rejected with the source path", async () => {
-  const repo = createFixtureRepository()
-  try {
-    writeFileSync(join(repo.root, "opencode.json"), "{ not json")
-
-    const error = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
+    const directory = toAbsolutePath(join(scratch.root, ".opencode"), "fixture directory")
+    write(directory, "agents/ghost.md", "---\npermission:\n  edit:\n    \"*\": true\n---\n")
+    const discovered = discoverAgentFiles(directory, scratch.root)
+    const error = captureThrown(() => readAgentFileRules(discovered[0] ?? null))
     expect(error.code).toEqual("INSPECTION_SOURCE_MALFORMED")
-    expect(error.message).toContain("opencode.json")
+    expect(error.message).toContain("ghost.md")
   } finally {
-    repo.cleanup()
-  }
-})
-
-test("a JSONC configuration with a UTF-8 BOM is read as a source", async () => {
-  const repo = createFixtureRepository()
-  try {
-    rmSync(join(repo.root, "opencode.json"))
-    writeFileSync(join(repo.root, "opencode.jsonc"), `\uFEFF${OPENCODE_JSONC_FIXTURE}`)
-    const report = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
-      runtime: createFakeRuntime(),
-      agentName: "ghost",
-    })
-    const byPosition = rulesByPosition(report)
-
-    expect(byPosition[8].origin).toEqual({ scope: "shared", source: "opencode.jsonc" })
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("a repository with only a JSONC configuration attributes origins to that path", async () => {
-  const repo = createFixtureRepository()
-  try {
-    rmSync(join(repo.root, "opencode.json"))
-    writeFileSync(join(repo.root, "opencode.jsonc"), OPENCODE_JSONC_FIXTURE)
-    const report = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
-      runtime: createFakeRuntime(),
-      agentName: "ghost",
-    })
-    const byPosition = rulesByPosition(report)
-
-    expect(byPosition[8]).toEqual({
-      permission: "read",
-      pattern: "*",
-      action: "allow",
-      position: 8,
-      origin: { scope: "shared", source: "opencode.jsonc" },
-      overrides: [],
-    })
-    expect(byPosition[12].origin).toEqual({ scope: "shared", source: "opencode.jsonc" })
-    expect(byPosition[18].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
-    expect(byPosition[18].overrides).toEqual([{ scope: "agent", source: "opencode.jsonc" }])
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("declarations from both configuration files report their exact source paths", async () => {
-  const repo = createFixtureRepository()
-  try {
-    writeFileSync(
-      join(repo.root, "opencode.jsonc"),
-      '{\n  "agent": { "ghost": { "permission": { "read": { "*.env.example": "allow" } } } }\n}\n',
-    )
-    const runtime = createFakeRuntime({
-      configOverride: (config) => {
-        config.agent.ghost.permission.read["*.env.example"] = "allow"
-      },
-    })
-    const report = await createEffectivePolicyReport({ repositoryRoot: repo.root, runtime, agentName: "ghost" })
-    const byPosition = rulesByPosition(report)
-
-    expect(byPosition[8].origin).toEqual({ scope: "shared", source: "opencode.json" })
-    expect(byPosition[11].origin).toEqual({ scope: "agent", source: "opencode.jsonc" })
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("a JSONC declaration overriding a JSON declaration becomes the effective origin with a known override", async () => {
-  const repo = createFixtureRepository()
-  try {
-    writeFileSync(join(repo.root, "opencode.json"), '{ "permission": { "bash": { "*": "deny" } } }\n')
-    writeFileSync(join(repo.root, "opencode.jsonc"), '{ "permission": { "bash": { "*": "ask" } } }\n')
-    const runtime = createFakeRuntime({
-      configOverride: (config) => {
-        config.permission.bash = { "*": "ask" }
-      },
-    })
-    const report = await createEffectivePolicyReport({ repositoryRoot: repo.root, runtime, agentName: "ghost" })
-    const byPosition = rulesByPosition(report)
-
-    expect(byPosition[12]).toEqual({
-      permission: "bash",
-      pattern: "*",
-      action: "ask",
-      position: 12,
-      origin: { scope: "shared", source: "opencode.jsonc" },
-      overrides: [{ scope: "shared", source: "opencode.json" }],
-    })
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("identical declarations of the same key report one later effective origin and an override record", async () => {
-  const repo = createFixtureRepository()
-  try {
-    writeFileSync(join(repo.root, "opencode.jsonc"), '{ "permission": { "read": { "*": "allow" } } }\n')
-    const report = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
-      runtime: createFakeRuntime(),
-      agentName: "ghost",
-    })
-    const byPosition = rulesByPosition(report)
-
-    expect(byPosition[8].origin).toEqual({ scope: "shared", source: "opencode.jsonc" })
-    expect(byPosition[8].overrides).toEqual([{ scope: "shared", source: "opencode.json" }])
-    expect(byPosition[12].origin).toEqual({ scope: "shared", source: "opencode.json" })
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("malformed repository JSONC configuration is rejected with its exact file and parse context", async () => {
-  const repo = createFixtureRepository()
-  try {
-    writeFileSync(join(repo.root, "opencode.jsonc"), '{\n  "permission": {\n    "read": { "*": "allow" }\n  }\n')
-
-    const error = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
-    expect(error.code).toEqual("INSPECTION_SOURCE_MALFORMED")
-    expect(error.message).toContain("opencode.jsonc")
-    expect(error.message).toMatch(/line \d+ column \d+/)
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("a symlinked repository JSONC configuration is rejected rather than followed", async () => {
-  const repo = createFixtureRepository()
-  try {
-    symlinkSync("/etc/hosts", join(repo.root, "opencode.jsonc"))
-
-    const error = await captureRejection(
-      createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-    )
-    expect(error.code).toEqual("INSPECTION_SOURCE_UNSUPPORTED")
-    expect(error.message).toContain("opencode.jsonc")
-    expect(error.message).toContain("symbolic link")
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("an unreadable repository JSONC configuration is rejected rather than treated as absent", async () => {
-  const repo = createFixtureRepository()
-  try {
-    writeFileSync(join(repo.root, "opencode.jsonc"), OPENCODE_JSONC_FIXTURE)
-    chmodSync(join(repo.root, "opencode.jsonc"), 0o000)
-    try {
-      const error = await captureRejection(
-        createEffectivePolicyReport({ repositoryRoot: repo.root, runtime: createFakeRuntime(), agentName: "ghost" }),
-      )
-      expect(error.code).toEqual("INSPECTION_SOURCE_UNREADABLE")
-      expect(error.message).toContain("opencode.jsonc")
-    } finally {
-      chmodSync(join(repo.root, "opencode.jsonc"), 0o644)
-    }
-  } finally {
-    repo.cleanup()
+    scratch.cleanup()
   }
 })

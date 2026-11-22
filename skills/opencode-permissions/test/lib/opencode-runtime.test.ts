@@ -8,34 +8,8 @@ import type { OpenCodeRuntimeDeps } from "../../src/lib/opencode-runtime"
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures")
 
-// Captured `opencode agent list` output.
-const AGENT_LIST_FIXTURE = readFileSync(join(fixturesDir, "agent-list.txt"), "utf8")
-const DEBUG_CONFIG_FIXTURE = readFileSync(join(fixturesDir, "debug-config.json"), "utf8")
-const DEBUG_AGENT_FIXTURE = readFileSync(join(fixturesDir, "debug-agent.json"), "utf8")
-
-// The captured output cut inside the final (ghost) permission array with the
-// closing bracket removed: the exact shape a truncated pipe produces.
-const TRUNCATED_AGENT_LIST = AGENT_LIST_FIXTURE.replace(
-  /ghost \(all\)[\s\S]*$/,
-  'ghost (all)\n  [\n  {\n    "permission": "*",\n    "action": "allow",\n    "pattern": "*"\n  }\n',
-)
-
-// The captured output cut mid-way through the final block header: the partial
-// line "ghost (al" is appended after the previous block's closing bracket and
-// the runtime's terminal newline is missing.
-const TRUNCATED_AGENT_LIST_MID_HEADER = AGENT_LIST_FIXTURE.slice(
-  0,
-  AGENT_LIST_FIXTURE.indexOf("ghost (all)") + "ghost (al".length,
-)
-
-// The captured output ends right after the final closing bracket: every block
-// parses, but the runtime's terminal newline is missing.
-const TRUNCATED_AGENT_LIST_AFTER_LAST_BLOCK = AGENT_LIST_FIXTURE.slice(0, -1)
-
-// The complete captured output with one extra non-empty line after the final
-// closing bracket and the terminal newline intact: emitted verbatim by the
-// runtime, never a truncated prefix.
-const AGENT_LIST_WITH_TRAILING_GARBAGE = AGENT_LIST_FIXTURE + "not part of any block\n"
+const DEBUG_CONFIG_FIXTURE = readFileSync(join(fixturesDir, "debug-config.json"), "utf8").replaceAll("$REPOSITORY_ROOT", "/repo")
+const DEBUG_AGENTS_FIXTURE = readFileSync(join(fixturesDir, "debug-agents.json"), "utf8")
 
 type ExecFileRunner = OpenCodeRuntimeDeps["execFile"]
 type SpawnRunner = NonNullable<OpenCodeRuntimeDeps["spawn"]>
@@ -106,9 +80,8 @@ function createFakeExecFile(
 }
 
 const DEFAULT_RESPONSES: Record<string, string> = {
-  "opencode agent list": AGENT_LIST_FIXTURE,
+  "opencode debug agents": DEBUG_AGENTS_FIXTURE,
   "opencode debug config": DEBUG_CONFIG_FIXTURE,
-  "opencode debug agent ghost": DEBUG_AGENT_FIXTURE,
 }
 
 /**
@@ -121,7 +94,7 @@ function createFixtureRuntime(
   const fake = createFakeExecFile({ ...DEFAULT_RESPONSES, ...overrides }, failure)
   const runtime = createOpenCodeRuntime({
     execFile: fake.execFile,
-    env: { PATH: "/usr/bin:/bin", HOME: "/home/test", OPENCODE_CONFIG: "/evil/config.json" },
+    env: { PATH: "/usr/bin:/bin", HOME: "/home/example", OPENCODE_CONFIG: "/evil/config.json" },
     timeoutMs: 5_000,
   })
   return { runtime, fake }
@@ -161,378 +134,258 @@ async function captureRejection(promise: Promise<unknown>): Promise<Error & { co
   throw new Error("expected the operation to reject")
 }
 
-test("the agent inventory is read from the approved agent list command", async () => {
+test("the agent inventory is read from the approved debug agents command", async () => {
   const { runtime, fake } = createFixtureRuntime()
-  const agents = await runtime.listAgents("/repo")
+  const agents = await runtime.readAgentInventory("/repo")
 
-  expect(fake.calls[0].args).toEqual(["agent", "list"])
   expect(fake.calls[0].file).toEqual("opencode")
+  expect(fake.calls[0].args).toEqual(["debug", "agents"])
+  expect(fake.calls[0].options.cwd).toEqual("/repo")
+  expect(fake.calls[0].options.timeout).toEqual(5_000)
+  expect(fake.calls[0].options.env.OPENCODE_CONFIG).toEqual(undefined)
+  expect(fake.calls[0].options.env.HOME).toEqual("/home/example")
 
-  expect(agents.length).toEqual(6)
-  expect(agents.map((agent) => `${agent.name} (${agent.mode})`)).toEqual([
-    "compaction (primary)",
-    "explore (subagent)",
-    "general (subagent)",
-    "summary (primary)",
-    "title (primary)",
-    "ghost (all)",
-  ])
+  expect(agents.length).toEqual(7)
+  const build = agents[0]
+  expect(build.id).toEqual("build")
+  expect(build.name).toEqual("Build")
+  expect(build.mode).toEqual("primary")
+  expect(build.hidden).toEqual(false)
+  expect(build.permissions.length).toEqual(11)
+  expect(build.permissions[0]).toEqual({ action: "*", resource: "*", effect: "allow" })
 
-  const ghost = agents[5]
+  const ghost = agents[4]
+  expect(ghost.id).toEqual("ghost")
   expect(ghost.name).toEqual("ghost")
   expect(ghost.mode).toEqual("all")
-  expect(ghost.rules.length > 10).toBeTruthy()
-  expect(ghost.rules[0]).toEqual({ permission: "*", action: "allow", pattern: "*" })
+  expect(ghost.hidden).toEqual(true)
+  expect(ghost.permissions.length).toEqual(28)
   expect(
-    ghost.rules.every(
+    ghost.permissions.every(
       (rule) =>
-        typeof rule.permission === "string" &&
-        typeof rule.pattern === "string" &&
-        ["allow", "ask", "deny"].includes(rule.action),
+        typeof rule.action === "string" &&
+        typeof rule.resource === "string" &&
+        ["allow", "ask", "deny"].includes(rule.effect),
     ),
   ).toBeTruthy()
 })
 
-test("a trailing comma before the closing bracket is accepted", async () => {
-  const { runtime } = createFixtureRuntime({
-    "opencode agent list":
-      'ghost (all)\n  [\n  {\n    "permission": "read",\n    "action": "allow",\n    "pattern": "*"\n  },\n]\n',
-  })
-  const agents = await runtime.listAgents("/repo")
-
-  expect(agents.length).toEqual(1)
-  expect(agents[0].name).toEqual("ghost")
-  expect(agents[0].rules).toEqual([{ permission: "read", action: "allow", pattern: "*" }])
-})
-
-test("a header-only agent block reports an empty rule list", async () => {
-  const { runtime } = createFixtureRuntime({
-    "opencode agent list":
-      'finish (all)\ngeneral (subagent)\n  [\n  {\n    "permission": "read",\n    "action": "allow",\n    "pattern": "*"\n  }\n]\n',
-  })
-  const agents = await runtime.listAgents("/repo")
-
-  expect(agents.length).toEqual(2)
-  expect(agents[0].name).toEqual("finish")
-  expect(agents[0].mode).toEqual("all")
-  expect(agents[0].rules).toEqual([])
-  expect(agents[1].name).toEqual("general")
-  expect(agents[1].rules).toEqual([{ permission: "read", action: "allow", pattern: "*" }])
-})
-
-test("retries the agent listing once when the first output is truncated", async () => {
-  const { runtime, fake } = createFixtureRuntime({
-    "opencode agent list": [TRUNCATED_AGENT_LIST, AGENT_LIST_FIXTURE],
-  })
-  const agents = await runtime.listAgents("/repo")
-
-  expect(fake.calls.length).toEqual(2)
-  expect(fake.calls.map((call) => call.args)).toEqual([["agent", "list"], ["agent", "list"]])
-  expect(fake.calls[1].options.cwd).toEqual("/repo")
-  expect(fake.calls[1].options.timeout).toEqual(5_000)
-  expect(fake.calls[1].options.env.OPENCODE_CONFIG).toEqual(undefined)
-
-  expect(agents.length).toEqual(6)
-  expect(agents[5].name).toEqual("ghost")
-  expect(agents[5].rules.length > 10).toBeTruthy()
-})
-
-test("a retried output that is also truncated reports both attempts", async () => {
-  const { runtime, fake } = createFixtureRuntime({
-    "opencode agent list": [TRUNCATED_AGENT_LIST, TRUNCATED_AGENT_LIST],
-  })
-  const error = await captureRejection(runtime.listAgents("/repo"))
-  expect(error.code).toEqual("OPENCODE_OUTPUT_TRUNCATED")
-  expect(error.message).toContain("listAgents")
-  expect(error.message).toContain("opencode agent list")
-  expect(error.message).toContain("2 attempts")
-  expect(error.message).toContain('agent "ghost"')
-  expect(fake.calls.length).toEqual(2)
-})
-
-test("a first output cut inside the next block header triggers one retry", async () => {
-  const { runtime, fake } = createFixtureRuntime({
-    "opencode agent list": [TRUNCATED_AGENT_LIST_MID_HEADER, AGENT_LIST_FIXTURE],
-  })
-  const agents = await runtime.listAgents("/repo")
-
-  expect(fake.calls.length).toEqual(2)
-  expect(fake.calls.map((call) => call.args)).toEqual([["agent", "list"], ["agent", "list"]])
-  expect(agents.length).toEqual(6)
-  expect(agents[5].name).toEqual("ghost")
-  expect(agents[5].rules.length > 10).toBeTruthy()
-})
-
-test("complete output without a terminal newline is accepted", async () => {
-  const { runtime, fake } = createFixtureRuntime({
-    "opencode agent list": [TRUNCATED_AGENT_LIST_AFTER_LAST_BLOCK, TRUNCATED_AGENT_LIST_AFTER_LAST_BLOCK],
-  })
-  const agents = await runtime.listAgents("/repo")
-  expect(fake.calls.length).toEqual(1)
-  expect(agents.length).toEqual(6)
-  expect(agents[5].name).toEqual("ghost")
-})
-
-test("trailing content after the closing bracket is rejected after one attempt", async () => {
-  const { runtime, fake } = createFixtureRuntime({
-    "opencode agent list": AGENT_LIST_WITH_TRAILING_GARBAGE,
-  })
-  const error = await captureRejection(runtime.listAgents("/repo"))
-  expect(error.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(error.message).toContain("listAgents")
-  expect(error.message).toContain('agent "ghost"')
-  expect(error.message).toContain("not part of any block")
-  expect(fake.calls.length).toEqual(1)
-})
-
-test("unsupported headers, invalid actions, non-JSON output, and execution failures are each attempted once", async () => {
-  const unsupportedHeader = createFixtureRuntime({
-    "opencode agent list": "ghost all\n  [\n  ]\n",
-  })
-  const headerError = await captureRejection(unsupportedHeader.runtime.listAgents("/repo"))
-  expect(headerError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(headerError.message).toContain("ghost all")
-  expect(unsupportedHeader.fake.calls.length).toEqual(1)
-
-  const invalidAction = createFixtureRuntime({
-    "opencode agent list":
-      'ghost (all)\n  [\n  {\n    "permission": "read",\n    "action": "maybe",\n    "pattern": "*"\n  }\n]\n',
-  })
-  const actionError = await captureRejection(invalidAction.runtime.listAgents("/repo"))
-  expect(actionError.code).toEqual("OPENCODE_INVALID_ACTION")
-  expect(actionError.message).toContain("maybe")
-  expect(invalidAction.fake.calls.length).toEqual(1)
-
-  const nonJson = createFixtureRuntime({
-    "opencode agent list": "ghost (all)\n  [\n  not json\n]\n",
-  })
-  const jsonError = await captureRejection(nonJson.runtime.listAgents("/repo"))
-  expect(jsonError.code).toEqual("OPENCODE_OUTPUT_INVALID_JSON")
-  expect(jsonError.message).toContain("not valid JSON")
-  expect(nonJson.fake.calls.length).toEqual(1)
-
-  const enoent = Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" })
-  const failing = createFixtureRuntime({}, enoent)
-  const executionFailure = await captureRejection(failing.runtime.listAgents("/repo"))
-  expect(executionFailure.code).toEqual("OPENCODE_UNAVAILABLE")
-  expect(failing.fake.calls.length).toEqual(1)
-})
-
-test("successive inventory reads return complete ordered rule arrays", async () => {
+test("agent records without known extra fields are accepted", async () => {
   const { runtime } = createFixtureRuntime()
-  const first = await runtime.listAgents("/repo")
-  const second = await runtime.listAgents("/repo")
+  const agents = await runtime.readAgentInventory("/repo")
 
-  expect(first[5].rules).toEqual(second[5].rules)
-  expect(second[5].rules).toEqual(JSON.parse(JSON.stringify(second[5].rules)))
-  const beforeMutation = second[5].rules.map((rule) => ({ ...rule }))
-  first[5].rules[0] = { permission: "mutated", action: "allow", pattern: "*" }
-  first[5].rules[1].action = "deny"
-  expect(second[5].rules).toEqual(beforeMutation)
+  expect(agents.map((agent) => [agent.id, agent.name, agent.mode, agent.hidden]).slice(0, 4)).toEqual([
+    ["build", "Build", "primary", false],
+    ["compaction", "Compaction", "primary", true],
+    ["explore", "Explore", "subagent", false],
+    ["general", "General", "subagent", false],
+  ])
 })
 
-test("the resolved configuration is read from the approved debug config command", async () => {
+test("the config entries are read from the approved debug config command in order", async () => {
   const { runtime, fake } = createFixtureRuntime()
-  const config = await runtime.readResolvedConfig("/repo")
+  const entries = await runtime.readConfigEntries("/repo")
 
+  expect(fake.calls[0].file).toEqual("opencode")
   expect(fake.calls[0].args).toEqual(["debug", "config"])
-  expect(config.permission).toEqual({
-    bash: { "*": "ask" },
-    edit: { "*": "deny" },
-    read: { "*": "allow" },
-    skill: { "legacy-skill": "deny", "opencode-permission-optimizer": "deny" },
-    webfetch: "ask",
-  })
-  const agents = config.agent as Record<string, { name: string; permission: Record<string, string> }>
-  expect(agents.ghost.name).toEqual("ghost")
-  expect(agents.ghost.permission.question).toEqual("allow")
+  expect(fake.calls[0].options.cwd).toEqual("/repo")
+  expect(fake.calls[0].options.env.OPENCODE_CONFIG).toEqual(undefined)
+
+  expect(entries.length).toEqual(4)
+  expect(entries.map((entry) => entry.type)).toEqual(["document", "document", "document", "directory"])
+  const [globalDocument, worktreeDocument, jsoncDocument, directory] = entries
+  if (globalDocument.type !== "document" || worktreeDocument.type !== "document" || jsoncDocument.type !== "document") {
+    throw new Error("expected the first three entries to be documents")
+  }
+  expect(globalDocument.path).toEqual("/home/example/.config/opencode/opencode.json")
+  expect(globalDocument.permissions).toEqual([
+    { action: "webfetch", resource: "example.test/*", effect: "deny" },
+  ])
+  expect(worktreeDocument.path).toEqual("/repo/opencode.json")
+  expect(worktreeDocument.permissions.map((rule) => rule.action)).toEqual(["read", "skill", "edit"])
+  expect(worktreeDocument.agents.ghost?.permissions).toEqual([
+    { action: "read", resource: "opencode.json", effect: "allow" },
+    { action: "subagent", resource: "*", effect: "deny" },
+  ])
+  expect(worktreeDocument.agents.plan?.disabled).toEqual(true)
+  expect(jsoncDocument.permissions).toEqual([{ action: "shell", resource: "*", effect: "ask" }])
+  expect(directory.type).toEqual("directory")
+  if (directory.type === "directory") expect(directory.path).toEqual("/repo/.opencode")
 })
 
-test("large resolved configuration output is captured through a regular file", async () => {
-  const largeConfig = JSON.stringify({
-    permission: { read: { "*": "allow" } },
-    agent: { ghost: { name: "ghost", padding: "x".repeat(70_000) } },
-  })
+test("large debug config output is captured through a regular file", async () => {
+  const largeConfig = JSON.stringify([
+    {
+      type: "document",
+      path: "/repo/opencode.json",
+      info: {
+        permissions: [{ action: "read", resource: "*".repeat(100_000), effect: "allow" }],
+      },
+    },
+  ])
   const fake = createFakeSpawn(largeConfig)
   const runtime = createOpenCodeRuntime({
     execFile: (() => {
-      throw new Error("readResolvedConfig must use file-backed stdout")
+      throw new Error("readConfigEntries must use file-backed stdout")
     }) as unknown as ExecFileRunner,
     spawn: fake.spawn,
-    env: { PATH: "/usr/bin:/bin", HOME: "/home/test" },
+    env: { PATH: "/usr/bin:/bin", HOME: "/home/example" },
     timeoutMs: 5_000,
   })
 
-  const config = await runtime.readResolvedConfig("/repo")
+  const entries = await runtime.readConfigEntries("/repo")
 
   expect(fake.calls.length).toEqual(1)
   expect(fake.calls[0].args).toEqual(["debug", "config"])
   expect(typeof fake.calls[0].options.stdio[1]).toEqual("number")
-  const agents = config.agent as Record<string, { padding: string }>
-  expect(agents.ghost.padding.length).toEqual(70_000)
+  expect(entries[0]?.type === "document" && entries[0].permissions[0]?.resource.length).toEqual(100_000)
 })
 
-test("the resolved agent configuration is read from the approved debug agent command", async () => {
-  const { runtime, fake } = createFixtureRuntime()
-  const agent = await runtime.readResolvedAgentConfig("ghost", "/repo")
+test("rejects an agent when the runtime reports an unsupported permission effect", async () => {
+  const agents = JSON.parse(DEBUG_AGENTS_FIXTURE) as Array<Record<string, unknown>>
+  const ghost = agents.find((agent) => agent.id === "ghost")
+  if (ghost === undefined) throw new Error("fixture world must define a ghost agent")
+  ;(ghost.permissions as Array<Record<string, unknown>>)[7].effect = "maybe"
+  const { runtime } = createFixtureRuntime({ "opencode debug agents": JSON.stringify(agents) })
 
-  expect(fake.calls[0].args).toEqual(["debug", "agent", "ghost"])
-  expect(agent.name).toEqual("ghost")
-  expect(agent.mode).toEqual("all")
-  expect(agent.native).toEqual(false)
-  expect(agent.permission.length).toEqual(36)
-  expect(agent.permission[0]).toEqual({ permission: "*", action: "allow", pattern: "*" })
-})
-
-test("an agent name mismatch is rejected with context", async () => {
-  const { runtime } = createFixtureRuntime({
-    "opencode debug agent other": DEBUG_AGENT_FIXTURE,
-  })
-  const error = await captureRejection(runtime.readResolvedAgentConfig("other", "/repo"))
-  expect(error.code).toEqual("OPENCODE_AGENT_MISMATCH")
-  expect(error.message).toContain("readResolvedAgentConfig")
-  expect(error.message).toContain("opencode debug agent other")
-  expect(error.message).toContain('expected "other"')
-  expect(error.message).toContain('got "ghost"')
+  const error = await captureRejection(runtime.readAgentInventory("/repo"))
+  expect(error.code).toEqual("OPENCODE_INVALID_EFFECT")
+  expect(error.message).toContain("ghost")
+  expect(error.message).toContain("7")
+  expect(error.message).toContain("maybe")
+  expect(error.message).toContain("allow|deny|ask")
 })
 
 test("reports the installation message when the command runner cannot find the executable", async () => {
   const enoent = Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" })
   const { runtime } = createFixtureRuntime({}, enoent)
-  const error = await captureRejection(runtime.listAgents("/repo"))
-  expect(error.code).toEqual("OPENCODE_UNAVAILABLE")
-  expect(error.message).toEqual("opencode is not installed or not on PATH; install OpenCode and retry")
-})
-
-test("reports that opencode is not installed when the executable is missing", async () => {
-  const spawn = ((): EventEmitter => {
-    const child = new EventEmitter() as EventEmitter & { stderr: EventEmitter }
-    child.stderr = new EventEmitter()
-    queueMicrotask(() => {
-      child.emit("error", Object.assign(new Error("spawn opencode ENOENT"), { code: "ENOENT" }))
-    })
-    return child
-  }) as unknown as SpawnRunner
-  const runtime = createOpenCodeRuntime({
-    execFile: (() => {
-      throw new Error("readResolvedConfig must use file-backed stdout")
-    }) as unknown as ExecFileRunner,
-    spawn,
-    env: { PATH: "/usr/bin:/bin", HOME: "/home/test" },
-    timeoutMs: 5_000,
-  })
-
-  const error = await captureRejection(runtime.readResolvedConfig("/repo"))
+  const error = await captureRejection(runtime.readAgentInventory("/repo"))
   expect(error.code).toEqual("OPENCODE_UNAVAILABLE")
   expect(error.message).toEqual("opencode is not installed or not on PATH; install OpenCode and retry")
 })
 
 test("a non-zero exit is reported with operation, command, and stderr context", async () => {
-  const failure = Object.assign(new Error("Command failed: opencode debug agent ghost\nFatal: boom"), { code: 1 })
+  const failure = Object.assign(new Error("Command failed: opencode debug config\nFatal: boom"), { code: 1 })
   const { runtime } = createFixtureRuntime({}, failure)
-  const error = await captureRejection(runtime.readResolvedAgentConfig("ghost", "/repo"))
+  const error = await captureRejection(runtime.readConfigEntries("/repo"))
   expect(error.code).toEqual("OPENCODE_EXECUTION_FAILED")
-  expect(error.message).toContain("readResolvedAgentConfig")
-  expect(error.message).toContain("opencode debug agent ghost")
+  expect(error.message).toContain("readConfigEntries")
+  expect(error.message).toContain("opencode debug config")
   expect(error.message).toContain("boom")
 })
 
 test("malformed JSON output is reported with operation and command context", async () => {
-  const { runtime } = createFixtureRuntime({ "opencode debug config": "not json at all" })
-  const error = await captureRejection(runtime.readResolvedConfig("/repo"))
+  const { runtime } = createFixtureRuntime({ "opencode debug agents": "not json at all" })
+  const error = await captureRejection(runtime.readAgentInventory("/repo"))
   expect(error.code).toEqual("OPENCODE_OUTPUT_INVALID_JSON")
-  expect(error.message).toContain("readResolvedConfig")
-  expect(error.message).toContain("opencode debug config")
+  expect(error.message).toContain("readAgentInventory")
+  expect(error.message).toContain("opencode debug agents")
 })
 
-test("an unknown agent message from the debug command is reported as a missing agent", async () => {
-  const { runtime } = createFixtureRuntime({
-    "opencode debug agent ghost": "Agent ghost not found, run 'opencode agent list' to get an agent list\n",
+test("agent inventory output that is not an array of valid agent records is rejected", async () => {
+  const objectInventory = createFixtureRuntime({ "opencode debug agents": "{}" })
+  const objectError = await captureRejection(objectInventory.runtime.readAgentInventory("/repo"))
+  expect(objectError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(objectError.message).toContain("readAgentInventory")
+
+  const missingName = createFixtureRuntime({
+    "opencode debug agents": JSON.stringify([{ id: "build", mode: "primary", hidden: false, permissions: [] }]),
   })
-  const error = await captureRejection(runtime.readResolvedAgentConfig("ghost", "/repo"))
-  expect(error.code).toEqual("OPENCODE_AGENT_NOT_FOUND")
-  expect(error.message).toContain("readResolvedAgentConfig")
-  expect(error.message).toContain("ghost")
+  const nameError = await captureRejection(missingName.runtime.readAgentInventory("/repo"))
+  expect(nameError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(nameError.message).toContain("readAgentInventory")
+  expect(nameError.message).toContain("name")
+
+  const missingPermissions = createFixtureRuntime({
+    "opencode debug agents": JSON.stringify([{ id: "build", name: "Build", mode: "primary", hidden: false }]),
+  })
+  const permissionError = await captureRejection(missingPermissions.runtime.readAgentInventory("/repo"))
+  expect(permissionError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(permissionError.message).toContain("permissions")
+
+  const unsupportedMode = createFixtureRuntime({
+    "opencode debug agents": JSON.stringify([
+      { id: "build", name: "Build", mode: "omnipresent", hidden: false, permissions: [] },
+    ]),
+  })
+  const modeError = await captureRejection(unsupportedMode.runtime.readAgentInventory("/repo"))
+  expect(modeError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(modeError.message).toContain("omnipresent")
 })
 
-test("unsupported JSON shapes are rejected with context", async () => {
-  const arrayConfig = createFixtureRuntime({ "opencode debug config": "[1, 2, 3]" })
-  const arrayError = await captureRejection(arrayConfig.runtime.readResolvedConfig("/repo"))
+test("config entry output with unsupported shapes or rules is rejected with context", async () => {
+  const notAnArray = createFixtureRuntime({ "opencode debug config": "{}" })
+  const arrayError = await captureRejection(notAnArray.runtime.readConfigEntries("/repo"))
   expect(arrayError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(arrayError.message).toContain("readResolvedConfig")
+  expect(arrayError.message).toContain("readConfigEntries")
 
-  const noPermissionAgent = createFixtureRuntime({
-    "opencode debug agent ghost": JSON.stringify({ name: "ghost", mode: "all" }),
+  const unknownEntryType = createFixtureRuntime({
+    "opencode debug config": JSON.stringify([{ type: "surprise" }]),
   })
-  const missingPermission = await captureRejection(noPermissionAgent.runtime.readResolvedAgentConfig("ghost", "/repo"))
-  expect(missingPermission.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(missingPermission.message).toContain("readResolvedAgentConfig")
-  expect(missingPermission.message).toContain("permission")
+  const typeError = await captureRejection(unknownEntryType.runtime.readConfigEntries("/repo"))
+  expect(typeError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(typeError.message).toContain("surprise")
 
-  const badConfigAgent = createFixtureRuntime({
-    "opencode debug config": JSON.stringify({ permission: [], agent: [] }),
+  const missingDirectoryPath = createFixtureRuntime({
+    "opencode debug config": JSON.stringify([{ type: "directory" }]),
   })
-  const badShape = await captureRejection(badConfigAgent.runtime.readResolvedConfig("/repo"))
-  expect(badShape.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(badShape.message).toContain("readResolvedConfig")
+  const directoryError = await captureRejection(missingDirectoryPath.runtime.readConfigEntries("/repo"))
+  expect(directoryError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(directoryError.message).toContain("directory")
+
+  const documentWithoutInfo = createFixtureRuntime({
+    "opencode debug config": JSON.stringify([{ type: "document", path: "/repo/opencode.json" }]),
+  })
+  const documentError = await captureRejection(documentWithoutInfo.runtime.readConfigEntries("/repo"))
+  expect(documentError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(documentError.message).toContain("document")
+
+  const brokenRule = createFixtureRuntime({
+    "opencode debug config": JSON.stringify([
+      {
+        type: "document",
+        path: "/repo/opencode.json",
+        info: { permissions: [{ action: "read", effect: "allow" }] },
+      },
+    ]),
+  })
+  const ruleError = await captureRejection(brokenRule.runtime.readConfigEntries("/repo"))
+  expect(ruleError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(ruleError.message).toContain("resource")
+
+  const brokenAgentEntry = createFixtureRuntime({
+    "opencode debug config": JSON.stringify([
+      {
+        type: "document",
+        path: "/repo/opencode.json",
+        info: { agents: { ghost: { permissions: "all" } } },
+      },
+    ]),
+  })
+  const agentError = await captureRejection(brokenAgentEntry.runtime.readConfigEntries("/repo"))
+  expect(agentError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
+  expect(agentError.message).toContain("ghost")
 })
 
-test("agent-list blocks with unsupported headers or bodies are rejected with context", async () => {
-  const badHeader = createFixtureRuntime({
-    "opencode agent list": "ghost all\n  [\n  ]\n",
-  })
-  const headerError = await captureRejection(badHeader.runtime.listAgents("/repo"))
-  expect(headerError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(headerError.message).toContain("listAgents")
-  expect(headerError.message).toContain("ghost all")
+test("successive inventory reads return complete ordered rule arrays", async () => {
+  const { runtime } = createFixtureRuntime()
+  const first = await runtime.readAgentInventory("/repo")
+  const second = await runtime.readAgentInventory("/repo")
 
-  const bodyWithoutArray = createFixtureRuntime({
-    "opencode agent list": "ghost (all)\n  not-an-array\n",
-  })
-  const bodyError = await captureRejection(bodyWithoutArray.runtime.listAgents("/repo"))
-  expect(bodyError.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(bodyError.message).toContain("listAgents")
-})
-
-test("a rule with a missing field is rejected with its index in the message", async () => {
-  const brokenRules = JSON.parse(DEBUG_AGENT_FIXTURE) as { permission: Array<Record<string, unknown>> }
-  delete brokenRules.permission[4].pattern
-  const { runtime } = createFixtureRuntime({
-    "opencode debug agent ghost": JSON.stringify(brokenRules),
-  })
-  const error = await captureRejection(runtime.readResolvedAgentConfig("ghost", "/repo"))
-  expect(error.code).toEqual("OPENCODE_CONTRACT_UNSUPPORTED")
-  expect(error.message).toContain("rule 4")
-  expect(error.message).toContain("pattern")
-})
-
-test("a rule with an invalid action is rejected with the action in the message", async () => {
-  const brokenRules = JSON.parse(DEBUG_AGENT_FIXTURE) as { permission: Array<Record<string, unknown>> }
-  brokenRules.permission[7].action = "maybe"
-  const { runtime } = createFixtureRuntime({
-    "opencode debug agent ghost": JSON.stringify(brokenRules),
-  })
-  const error = await captureRejection(runtime.readResolvedAgentConfig("ghost", "/repo"))
-  expect(error.code).toEqual("OPENCODE_INVALID_ACTION")
-  expect(error.message).toContain("rule 7")
-  expect(error.message).toContain("maybe")
+  expect(first[4].permissions).toEqual(second[4].permissions)
+  const firstRule = first[4].permissions[0]
+  first[4].permissions[0] = { action: "mutated", resource: "*", effect: "allow" }
+  expect(second[4].permissions[0]).toEqual(firstRule)
 })
 
 test("the adapter never runs a tool, sends tool parameters, or probes the version", async () => {
   const { runtime, fake } = createFixtureRuntime()
 
-  await runtime.listAgents("/repo")
-  await runtime.readResolvedConfig("/repo")
-  await runtime.readResolvedAgentConfig("ghost", "/repo")
+  await runtime.readAgentInventory("/repo")
+  await runtime.readConfigEntries("/repo")
 
   expect(fake.calls.map((call) => ["opencode", ...call.args].join(" "))).toEqual([
-    "opencode agent list",
+    "opencode debug agents",
     "opencode debug config",
-    "opencode debug agent ghost",
   ])
-  for (const call of fake.calls) {
-    expect(call.args.includes("--tool")).toBeFalsy()
-    expect(call.args.includes("--params")).toBeFalsy()
-    expect(call.args.includes("--version")).toBeFalsy()
-  }
 })

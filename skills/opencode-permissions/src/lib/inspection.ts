@@ -1,161 +1,256 @@
-import { mergeAgentPermissions, mergeSharedPermissions } from "./effective-permissions"
-import { buildEffectiveRules } from "./effective-rules"
-import { loadRepositoryConfigs, safeAgentName } from "./repository-configs"
-import { inspectionError } from "./errors"
+import { lstatSync } from "node:fs"
+import type { Stats } from "node:fs"
+import { relative, sep } from "node:path"
+import { toAbsolutePath } from "./absolute-path"
 import type { AbsolutePath } from "./absolute-path"
+import { attributeEffectiveRules } from "./effective-rules"
+import type { OriginCandidate } from "./effective-rules"
+import { builtinAgentRules, RUNTIME_DEFAULT_RULES } from "./builtin-agent-rules"
+import { expandHomeResources } from "./permission-declarations"
+import {
+  confirmConfigDocument,
+  discoverAgentFiles,
+  isCanonicallyContained,
+  readAgentFileRules,
+} from "./repository-configs"
+import { inspectionError } from "./errors"
 import type {
-  AgentListEntry,
   AgentListReport,
-  AgentStatus,
-  EffectiveAgent,
-  EffectivePermission,
+  ConfigEntry,
   EffectivePolicyReport,
   OpenCodeRuntime,
-  RepositoryConfig,
-  ResolvedAgentConfig,
-  ResolvedConfig,
+  RuntimeAgent,
+  RuntimeRule,
+  RuleOrigin,
 } from "./types"
 
-/** Inputs for one agent's effective policy assembly. */
-interface BuildEffectiveAgentDeps {
-  name: string
-  resolvedAgentConfig: ResolvedAgentConfig
-  listed: AgentListEntry | undefined
-  repositoryRoot: AbsolutePath
-  repositoryConfigs: RepositoryConfig[]
-  resolvedConfig: ResolvedConfig
-  sharedPermissions: EffectivePermission[]
-}
-
-/**
- * Build the enabled-agent inventory report for a repository.
- *
- * The installed runtime is authoritative: the report mirrors the enabled
- * agent inventory exactly (including hidden enabled agents), reads every
- * listed agent's resolved configuration for its native/custom status, and
- * never invents agents from repository files. Agent names are validated as
- * safe filename segments before any repository file lookup.
- *
- * The repository root is an `AbsolutePath` converted at the wrapper boundary.
- *
- * Rejects when the runtime is unavailable or returns malformed output or when
- * an agent name is not a safe filename segment.
- */
-export async function createAgentListReport(deps: {
+/** Inputs for the enabled-agent inventory report. */
+export interface AgentListReportDeps {
   repositoryRoot: AbsolutePath
   runtime: OpenCodeRuntime
-}): Promise<AgentListReport> {
-  const inventory = await deps.runtime.listAgents(deps.repositoryRoot)
-
-  const agents: AgentListReport["agents"] = []
-  for (const listed of inventory) {
-    safeAgentName(listed.name)
-    const resolvedAgentConfig = await deps.runtime.readResolvedAgentConfig(listed.name, deps.repositoryRoot)
-    agents.push({
-      name: listed.name,
-      mode: listed.mode,
-      status: nativeStatus(resolvedAgentConfig.native),
-    })
-  }
-  return { agents }
 }
 
-/**
- * Build the complete ordered permission report for one enabled agent or for
- * every enabled agent.
- *
- * Repository permissions are merged source-aware per layer before the
- * resolved rules are attributed. For each layer - repository-shared and
- * agent - same-key declarations are merged in application order, so the later
- * surviving declaration becomes the single effective origin and earlier
- * declarations become known overrides. A resolved rule position is attributed
- * to the surviving effective permission of a scope only when its exact tuple
- * also survives in the runtime's merged layer of that scope; every remaining
- * position is external with a null source. One effective permission never
- * becomes the origin of two positions, and every rule record carries fresh
- * origin and overrides objects so callers cannot mutate shared state. The
- * repository root is an `AbsolutePath` converted at the wrapper boundary.
- *
- * Rejects when the runtime is unavailable or returns malformed output, when a
- * repository source is unsupported, unreadable, or malformed, when an agent
- * name is not a safe filename segment, or when a requested agent is not in
- * the runtime inventory.
- */
-export async function createEffectivePolicyReport(deps: {
-  repositoryRoot: AbsolutePath
-  runtime: OpenCodeRuntime
+/** Inputs for the complete effective policy report. */
+export interface EffectivePolicyReportDeps extends AgentListReportDeps {
+  /** Requested agent id, or null for every agent the runtime lists. */
   agentName?: string | null
-}): Promise<EffectivePolicyReport> {
-  const [inventory, resolvedConfig] = await Promise.all([
-    deps.runtime.listAgents(deps.repositoryRoot),
-    deps.runtime.readResolvedConfig(deps.repositoryRoot),
+  /** The runtime's home directory for expanding home-prefixed path resources; null when unknown. */
+  home: string | null
+}
+
+/** The origin reported for rules no repository source can be attributed to. */
+const UNKNOWN_ORIGIN: RuleOrigin = { scope: "unknown", source: null }
+
+/**
+ * Build the enabled-agent inventory report. The installed runtime is
+ * authoritative: the report mirrors the runtime's agent inventory exactly -
+ * including hidden agents - and never invents agents from repository files.
+ *
+ * Rejects when the runtime is unavailable or returns malformed output.
+ */
+export async function createAgentListReport(deps: AgentListReportDeps): Promise<AgentListReport> {
+  const inventory = await deps.runtime.readAgentInventory(deps.repositoryRoot)
+  return {
+    agents: inventory.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      mode: agent.mode,
+      hidden: agent.hidden,
+    })),
+  }
+}
+
+/**
+ * Build the complete ordered permission report for one agent the runtime
+ * lists, or for every listed agent.
+ *
+ * Each agent's rules keep the runtime's order and positions. Origins are
+ * verified by aligning the runtime's rules against the full known candidate
+ * sequence the runtime builds them from: the runtime's default template and
+ * builtin additions, then every config entry's shared document rules in
+ * entry order, then the agent's own declarations in the same expanded entry
+ * order - config agent records and agent definition files discovered at
+ * directory entries. A candidate names an editable source only when its path
+ * is canonically contained in the repository, it is no symbolic link, and -
+ * for config documents - the actual bytes normalize to the rules the
+ * runtime reports. Every other origin stays unknown with a null source.
+ *
+ * Rejects when the runtime is unavailable or returns malformed output, when
+ * a discovered agent file declares permissions in unsupported syntax, when a
+ * repository config document is malformed JSONC, or when a requested agent is
+ * not in the runtime inventory.
+ */
+export async function createEffectivePolicyReport(deps: EffectivePolicyReportDeps): Promise<EffectivePolicyReport> {
+  const [inventory, entries] = await Promise.all([
+    deps.runtime.readAgentInventory(deps.repositoryRoot),
+    deps.runtime.readConfigEntries(deps.repositoryRoot),
   ])
   const requested = resolveRequestedAgents(inventory, deps.agentName ?? null)
+  const candidatesByAgentId = buildAgentCandidates(entries, requested, deps.repositoryRoot, deps.home)
 
-  const repositoryConfigs = loadRepositoryConfigs(deps.repositoryRoot)
-  const sharedPermissions = mergeSharedPermissions(repositoryConfigs)
+  return {
+    agents: requested.map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      mode: agent.mode,
+      hidden: agent.hidden,
+      rules: attributeEffectiveRules(agent.permissions, candidatesByAgentId.get(agent.id) ?? []),
+    })),
+  }
+}
 
-  const agents: EffectiveAgent[] = []
-  for (const name of requested) {
-    const resolvedAgentConfig = await deps.runtime.readResolvedAgentConfig(name, deps.repositoryRoot)
-    agents.push(
-      buildEffectiveAgent({
-        name,
-        resolvedAgentConfig,
-        listed: inventory.find((agent) => agent.name === name),
-        repositoryRoot: deps.repositoryRoot,
-        repositoryConfigs,
-        resolvedConfig,
-        sharedPermissions,
-      }),
+/**
+ * Resolve the requested agents against the runtime inventory, stopping with
+ * context when a requested agent is not listed.
+ */
+function resolveRequestedAgents(inventory: RuntimeAgent[], agentName: string | null): RuntimeAgent[] {
+  if (agentName === null) return inventory
+  const listed = inventory.find((agent) => agent.id === agentName)
+  if (listed === undefined) {
+    throw inspectionError(
+      "AGENT_NOT_IN_INVENTORY",
+      `show-effective: agent "${agentName}" is not in the runtime inventory`,
     )
   }
-  return { agents }
+  return [listed]
 }
 
 /**
- * Resolve the requested agent names against the runtime inventory, stopping
- * with context when a requested agent is not enabled.
+ * Build each requested agent's candidate sequence: the runtime's default
+ * template and builtin additions, then every document's shared rules, then
+ * the agent-scope declarations of documents and discovered definition files
+ * at their entry positions.
  */
-function resolveRequestedAgents(inventory: AgentListEntry[], agentName: string | null): string[] {
-  const listedNames = inventory.map((agent) => agent.name)
-  const requested = agentName === null ? listedNames : [agentName]
-  for (const name of requested) {
-    if (!listedNames.includes(name)) {
-      throw inspectionError(
-        "AGENT_NOT_IN_INVENTORY",
-        `show-effective: agent "${name}" is not in the runtime inventory`,
-      )
+function buildAgentCandidates(
+  entries: readonly ConfigEntry[],
+  requested: readonly RuntimeAgent[],
+  repositoryRoot: AbsolutePath,
+  home: string | null,
+): Map<string, OriginCandidate[]> {
+  const scoped = new Map<string, OriginCandidate[]>(requested.map((agent) => [agent.id, []]))
+  const sharedCandidates: OriginCandidate[] = []
+  const context = { repositoryRoot, home, scoped }
+
+  for (const entry of entries) {
+    if (entry.type === "document") {
+      appendDocumentCandidates(entry, sharedCandidates, context)
+      continue
+    }
+    appendDirectoryCandidates(entry, context)
+  }
+
+  const candidatesByAgentId = new Map<string, OriginCandidate[]>()
+  for (const agent of requested) {
+    candidatesByAgentId.set(agent.id, [
+      ...RUNTIME_DEFAULT_RULES.map((rule) => ({ rule: expandOne({ ...rule }, home), origin: UNKNOWN_ORIGIN })),
+      ...builtinAgentRules(agent.id).map((rule) => ({ rule: expandOne(rule, home), origin: UNKNOWN_ORIGIN })),
+      ...sharedCandidates,
+      ...(scoped.get(agent.id) ?? []),
+    ])
+  }
+  return candidatesByAgentId
+}
+
+/** Shared candidate-collection state threaded through the entry walkers. */
+interface CandidateContext {
+  repositoryRoot: AbsolutePath
+  home: string | null
+  scoped: Map<string, OriginCandidate[]>
+}
+
+/**
+ * Append one document entry's shared rules and requested agent declarations
+ * to the candidate lists.
+ */
+function appendDocumentCandidates(entry: ConfigEntry & { type: "document" }, sharedCandidates: OriginCandidate[], context: CandidateContext): void {
+  const origin = documentOrigin(entry, context.repositoryRoot)
+  for (const rule of entry.permissions) {
+    sharedCandidates.push({ rule: expandOne(rule, context.home), origin: origin.shared })
+  }
+  for (const [agentId, declaration] of Object.entries(entry.agents)) {
+    const scopedList = context.scoped.get(agentId)
+    if (scopedList === undefined) continue
+    for (const rule of declaration.permissions) {
+      scopedList.push({ rule: expandOne(rule, context.home), origin: origin.agent })
     }
   }
-  return requested
 }
 
 /**
- * Assemble one agent's complete ordered rule records, attributing every
- * resolved position to the surviving effective permissions of both layers.
+ * Discover and append the agent definition files of one repository-owned
+ * directory entry.
  */
-function buildEffectiveAgent(deps: BuildEffectiveAgentDeps): EffectiveAgent {
-  const agentPermissions = mergeAgentPermissions(deps.repositoryConfigs, deps.name, deps.repositoryRoot)
-  return {
-    name: deps.resolvedAgentConfig.name,
-    mode: deps.listed === undefined ? deps.resolvedAgentConfig.mode : deps.listed.mode,
-    status: nativeStatus(deps.resolvedAgentConfig.native),
-    rules: buildEffectiveRules(
-      deps.resolvedAgentConfig.permission,
-      deps.sharedPermissions,
-      agentPermissions,
-      deps.resolvedConfig,
-      deps.name,
-    ),
+function appendDirectoryCandidates(entry: ConfigEntry & { type: "directory" }, context: CandidateContext): void {
+  if (!isCanonicallyContained(entry.path, context.repositoryRoot)) return
+  const directoryRoot = toAbsolutePath(entry.path, "config directory path")
+  for (const file of discoverAgentFiles(directoryRoot, context.repositoryRoot)) {
+    const scopedList = context.scoped.get(file.agentId)
+    if (scopedList === undefined) continue
+    const rules = readAgentFileRules(file)
+    for (const rule of rules ?? []) {
+      scopedList.push({
+        rule: expandOne(rule, context.home),
+        origin: file.editable
+          ? { scope: "agent", source: relativePathOf(context.repositoryRoot, file.absolutePath) }
+          : UNKNOWN_ORIGIN,
+      })
+    }
   }
 }
 
 /**
- * Map the runtime's optional native flag to the report status; an absent flag
- * is reported as null rather than guessed.
+ * Resolve the shared and agent-scope origins one config document can name:
+ * the repository-relative path when the document lies canonically inside the
+ * repository, is a regular file rather than a symbolic link, and its bytes
+ * confirm the reported rules; the unknown origin otherwise.
  */
-function nativeStatus(native: boolean | undefined): AgentStatus {
-  if (native === undefined) return null
-  return native ? "native" : "custom"
+function documentOrigin(entry: ConfigEntry & { type: "document" }, repositoryRoot: AbsolutePath): { shared: RuleOrigin; agent: RuleOrigin } {
+  const editable =
+    entry.path !== null &&
+    isCanonicallyContained(entry.path, repositoryRoot) &&
+    sourceIsRegularFile(entry.path) &&
+    confirmConfigDocument(entry, repositoryRoot)
+  if (!editable || entry.path === null) return { shared: UNKNOWN_ORIGIN, agent: UNKNOWN_ORIGIN }
+  const source = relativePathOf(repositoryRoot, entry.path)
+  return {
+    shared: { scope: "shared", source },
+    agent: { scope: "agent", source },
+  }
+}
+
+/**
+ * Report whether the path names a regular file rather than a symbolic link or
+ * a directory.
+ */
+function sourceIsRegularFile(path: string): boolean {
+  const stat = lstatOrNull(path)
+  return stat !== null && stat.isFile()
+}
+
+/**
+ * Expand one rule's home-prefixed path resources.
+ */
+function expandOne(rule: RuntimeRule, home: string | null): RuntimeRule {
+  return expandHomeResources([rule], home)[0]!
+}
+
+/**
+ * Return the repository-relative slash-separated form of one contained
+ * absolute path, the form report origins print.
+ */
+function relativePathOf(repositoryRoot: AbsolutePath, path: string): string {
+  return relative(repositoryRoot, path).replaceAll(sep, "/")
+}
+
+/**
+ * Read the lstat result of a path, or null when it does not exist. The call
+ * never follows the final component, so symlinked sources stay visible as
+ * symlinks.
+ */
+function lstatOrNull(path: string): Stats | null {
+  try {
+    return lstatSync(path)
+  } catch {
+    return null
+  }
 }

@@ -1,90 +1,88 @@
 import { expect, test } from "bun:test"
-import { mkdirSync, readFileSync, readdirSync, rmSync } from "node:fs"
+import { mkdirSync, readdirSync, rmSync } from "node:fs"
 import { join } from "node:path"
 import { createAgentListReport, createEffectivePolicyReport } from "../src/lib/inspection"
-import type { AgentListReport, EffectivePolicyReport, EffectiveRule, RuleOrigin, RuleOverride } from "../src/lib/types"
+import type { AgentListReport, EffectivePolicyReport } from "../src/lib/types"
 import { parseArgs, renderEffectivePolicy, renderListAgents, resolveWrapperRepositoryRoot } from "../src/inspect"
 import {
-  AGENT_MD_FIXTURE,
   captureThrown,
   createFakeRuntime,
   createFixtureRepository,
-  OPENCODE_JSON_FIXTURE,
+  FIXTURE_HOME,
+  rulesByPosition,
 } from "./helpers/inspection-fixtures"
 
 test("the agent inventory renders as human-readable and JSON output", () => {
   const listReport: AgentListReport = {
     agents: [
-      { name: "ghost", mode: "all", status: "custom" },
-      { name: "compaction", mode: "primary", status: "native" },
+      { id: "build", name: "Build", mode: "primary", hidden: false },
+      { id: "compaction", name: "Compaction", mode: "primary", hidden: true },
+      { id: "ghost", name: "ghost", mode: "all", hidden: true },
     ],
   }
   const humanList = renderListAgents(listReport)
-  expect(humanList).toMatch(/ghost \(all, custom\)/)
-  expect(humanList).toMatch(/compaction \(primary, native\)/)
-  expect(humanList).not.toMatch(/version/i)
+
+  expect(humanList).toEqual("build (primary) — Build\ncompaction (primary, hidden) — Compaction\nghost (all, hidden)")
   expect(JSON.parse(JSON.stringify(listReport, null, 2))).toEqual(listReport)
 })
 
-/**
- * Build one effective rule record for the rendering test.
- */
-function buildRenderRule(
-  permission: string,
-  pattern: string,
-  action: string,
-  position: number,
-  origin: RuleOrigin,
-  overrides: RuleOverride[],
-): EffectiveRule {
-  return { permission, pattern, action, position, origin, overrides }
-}
+test("the human inventory appends the display name only when it differs from the id", () => {
+  const humanList = renderListAgents({
+    agents: [
+      { id: "clerk", name: "Paralegal", mode: "subagent", hidden: false },
+      { id: "title", name: "title", mode: "primary", hidden: true },
+    ],
+  })
 
-/**
- * Build the effective policy report used by the rendering test.
- */
-function buildRenderReport(): EffectivePolicyReport {
-  return {
+  expect(humanList).toEqual("clerk (subagent) — Paralegal\ntitle (primary, hidden)")
+})
+
+test("the effective policy renders as human-readable and JSON output", () => {
+  const effectiveReport: EffectivePolicyReport = {
     agents: [
       {
+        id: "ghost",
         name: "ghost",
         mode: "all",
-        status: "custom",
+        hidden: true,
         rules: [
-          buildRenderRule("read", "*", "allow", 8, { scope: "shared", source: "opencode.json" }, []),
-          buildRenderRule("read", "*", "deny", 18, { scope: "agent", source: ".opencode/agents/ghost.md" }, []),
-          buildRenderRule("edit", "*", "deny", 13, { scope: "shared", source: "opencode.json" }, [
-            { scope: "shared", source: "opencode.jsonc" },
-          ]),
-          buildRenderRule("*", "*", "allow", 0, { scope: "external", source: null }, []),
+          {
+            action: "read",
+            resource: "*",
+            effect: "allow",
+            position: 8,
+            origin: { scope: "shared", source: "opencode.json" },
+          },
+          {
+            action: "read",
+            resource: "*.env",
+            effect: "deny",
+            position: 18,
+            origin: { scope: "agent", source: ".opencode/agents/ghost.md" },
+          },
+          { action: "*", resource: "*", effect: "allow", position: 0, origin: { scope: "unknown", source: null } },
         ],
       },
     ],
   }
-}
+  const humanEffective = renderEffectivePolicy(effectiveReport)
 
-/**
- * Assert the human-readable effective policy lines for each origin shape.
- */
-function expectEffectiveRendering(output: string): void {
-  expect(output).toMatch(/ghost \(all, custom\)/)
-  expect(output).toMatch(/#8 read \* allow opencode\.json \(shared\)/)
-  expect(output).toMatch(/#18 read \* deny \.opencode\/agents\/ghost\.md \(agent\)/)
-  expect(output).toMatch(/#13 edit \* deny opencode\.json \(shared\) overrides opencode\.jsonc/)
-  expect(output).toMatch(/#0 \* \* allow \(external\)/)
-  expect(output).not.toMatch(/version/i)
-}
-
-test("the effective policy renders as human-readable and JSON output", () => {
-  const effectiveReport = buildRenderReport()
-  expectEffectiveRendering(renderEffectivePolicy(effectiveReport))
+  expect(humanEffective).toEqual(
+    [
+      "ghost (all, hidden)",
+      "  #8 read * allow opencode.json (shared)",
+      "  #18 read *.env deny .opencode/agents/ghost.md (agent)",
+      "  #0 * * allow (unknown)",
+    ].join("\n"),
+  )
+  expect(humanEffective).not.toMatch(/version/i)
   expect(JSON.parse(JSON.stringify(effectiveReport, null, 2))).toEqual(effectiveReport)
 })
 
 /**
- * Assert that no object in a report tree carries a candidate-inventory or
- * version key, so the report contract cannot regress toward the removed
- * duplication machinery.
+ * Assert that no object in a report tree carries a version key, so the
+ * report contract cannot regress toward inventory metadata the runtime
+ * never reported.
  */
 function assertNoForbiddenKeys(value: unknown, path = "report"): void {
   if (typeof value !== "object" || value === null) return
@@ -93,46 +91,48 @@ function assertNoForbiddenKeys(value: unknown, path = "report"): void {
     return
   }
   for (const [key, child] of Object.entries(value)) {
-    expect(key.includes("Candidate") || key === "version").toBeFalsy()
+    expect(key === "version").toBeFalsy()
     assertNoForbiddenKeys(child, `${path}.${key}`)
   }
 }
 
 test("reports expose no extra inventory metadata", async () => {
-  const repo = createFixtureRepository()
+  const repository = createFixtureRepository()
   try {
-    const listReport = await createAgentListReport({ repositoryRoot: repo.root, runtime: createFakeRuntime() })
+    const listReport = await createAgentListReport({ repositoryRoot: repository.root, runtime: createFakeRuntime() })
     const effectiveReport = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
+      repositoryRoot: repository.root,
       runtime: createFakeRuntime(),
       agentName: "ghost",
+      home: FIXTURE_HOME,
     })
 
     assertNoForbiddenKeys(listReport, "listReport")
     assertNoForbiddenKeys(effectiveReport, "effectiveReport")
   } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
 
 test("report creation makes no runtime version request", async () => {
-  const repo = createFixtureRepository()
+  const repository = createFixtureRepository()
   try {
     const runtime = createFakeRuntime()
     expect(typeof (runtime as { getVersion?: unknown }).getVersion).toEqual("undefined")
 
-    const listReport = await createAgentListReport({ repositoryRoot: repo.root, runtime })
+    const listReport = await createAgentListReport({ repositoryRoot: repository.root, runtime })
     const effectiveReport = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
+      repositoryRoot: repository.root,
       runtime,
       agentName: "ghost",
+      home: FIXTURE_HOME,
     })
     expect(!("version" in listReport)).toBeTruthy()
     expect(!("version" in effectiveReport)).toBeTruthy()
-    expect(listReport.agents.length).toEqual(6)
+    expect(listReport.agents.length).toEqual(7)
     expect(effectiveReport.agents.length).toEqual(1)
   } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
 
@@ -161,56 +161,41 @@ test("the command line accepts exactly the two read-only command shapes", () => 
   }
 })
 
-test("inspection leaves fixture policy sources byte-for-byte intact", async () => {
-  const repo = createFixtureRepository()
+test("a repository without reported config documents keeps agent file origins", async () => {
+  const repository = createFixtureRepository()
   try {
-    const runtime = createFakeRuntime()
-    await createAgentListReport({ repositoryRoot: repo.root, runtime })
-    await createEffectivePolicyReport({ repositoryRoot: repo.root, runtime, agentName: "ghost" })
-    await createEffectivePolicyReport({ repositoryRoot: repo.root, runtime })
-
-    expect(readFileSync(join(repo.root, "opencode.json"), "utf8")).toEqual(OPENCODE_JSON_FIXTURE)
-    expect(readFileSync(join(repo.root, ".opencode", "agents", "ghost.md"), "utf8")).toEqual(AGENT_MD_FIXTURE)
-    expect(readdirSync(repo.root).sort()).toEqual([".opencode", "opencode.json"])
-    expect(readdirSync(join(repo.root, ".opencode")).sort()).toEqual(["agents"])
-    expect(readdirSync(join(repo.root, ".opencode", "agents")).sort()).toEqual(["ghost.md"])
-  } finally {
-    repo.cleanup()
-  }
-})
-
-test("a repository without a configuration file yields no shared origins", async () => {
-  const repo = createFixtureRepository()
-  try {
-    rmSync(join(repo.root, "opencode.json"))
-    const listReport = await createAgentListReport({ repositoryRoot: repo.root, runtime: createFakeRuntime() })
-    expect(listReport.agents[0]).toEqual({ name: "compaction", mode: "primary", status: "native" })
+    rmSync(join(repository.root, "opencode.json"))
+    rmSync(join(repository.root, "opencode.jsonc"))
 
     const report = await createEffectivePolicyReport({
-      repositoryRoot: repo.root,
+      repositoryRoot: repository.root,
       runtime: createFakeRuntime(),
       agentName: "ghost",
+      home: FIXTURE_HOME,
     })
-    expect(report.agents[0].rules.every((rule) => rule.origin.scope !== "shared")).toBeTruthy()
-    expect(report.agents[0].rules[19].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
+    const byPosition = rulesByPosition(report)
+
+    expect(byPosition[5].origin).toEqual({ scope: "unknown", source: null })
+    expect(byPosition[11].origin).toEqual({ scope: "agent", source: ".opencode/agents/ghost.md" })
+    expect(readdirSync(join(repository.root)).sort()).toEqual([".opencode"])
   } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
 
 test("the wrapper repository root is accepted when it is an absolute Git worktree", () => {
-  const repo = createFixtureRepository()
+  const repository = createFixtureRepository()
   try {
-    mkdirSync(join(repo.root, ".git"))
-    const root = resolveWrapperRepositoryRoot({ OPENCODE_PERMISSIONS_REPOSITORY_ROOT: repo.root })
-    expect(root).toEqual(repo.root)
+    mkdirSync(join(repository.root, ".git"))
+    const root = resolveWrapperRepositoryRoot({ OPENCODE_PERMISSIONS_REPOSITORY_ROOT: repository.root })
+    expect(root).toEqual(repository.root)
   } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
 
 test("missing, relative, non-directory, and non-worktree wrapper roots are rejected", () => {
-  const repo = createFixtureRepository()
+  const repository = createFixtureRepository()
   try {
     const missing = captureThrown(() => resolveWrapperRepositoryRoot({}))
     expect(missing.code).toEqual("REPOSITORY_ROOT_MISSING")
@@ -224,17 +209,17 @@ test("missing, relative, non-directory, and non-worktree wrapper roots are rejec
     expect(relativeRoot.message).toContain("absolute")
 
     const nonDirectory = captureThrown(() =>
-      resolveWrapperRepositoryRoot({ OPENCODE_PERMISSIONS_REPOSITORY_ROOT: join(repo.root, "opencode.json") }),
+      resolveWrapperRepositoryRoot({ OPENCODE_PERMISSIONS_REPOSITORY_ROOT: join(repository.root, "opencode.json") }),
     )
     expect(nonDirectory.code).toEqual("REPOSITORY_ROOT_NOT_DIRECTORY")
     expect(nonDirectory.message).toContain("not an existing directory")
 
     const nonWorktree = captureThrown(() =>
-      resolveWrapperRepositoryRoot({ OPENCODE_PERMISSIONS_REPOSITORY_ROOT: repo.root }),
+      resolveWrapperRepositoryRoot({ OPENCODE_PERMISSIONS_REPOSITORY_ROOT: repository.root }),
     )
     expect(nonWorktree.code).toEqual("REPOSITORY_ROOT_NOT_WORKTREE")
     expect(nonWorktree.message).toContain("Git worktree")
   } finally {
-    repo.cleanup()
+    repository.cleanup()
   }
 })
