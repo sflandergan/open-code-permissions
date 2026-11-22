@@ -331,13 +331,28 @@ test("exports repository, agent, counts, policy, and requested patterns for an a
     expect(summary.schemaVersion).toEqual(SCHEMA_VERSION)
     expect(summary.repository).toEqual({ identity: IDENTITY, worktree: cwd })
     expect(summary.agent).toEqual({ name: "implement", mode: "all", status: "custom" })
-    expect(summary.counts).toEqual({ observations: 1, approvals: 1, rejections: 0, unresolved: 0, distinctSessions: 1 })
+    expect(summary.counts).toEqual({
+      observations: 1,
+      approvals: 1,
+      approvalsBySource: { "1": 0, "2": 1 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 1 },
+      rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
+      unresolved: 0,
+      distinctSessions: 1,
+    })
     expect(summary.inputs).toEqual([{
       permission: "bash",
       input: "git status",
       requests: 1,
       approvals: 1,
+      approvalsBySource: { "1": 0, "2": 1 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 1 },
+      successfulOnceApprovalsBySource: { "1": 0, "2": 1 },
       rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
       unresolved: 0,
       distinctSessions: 1,
       firstActivityAt: "2026-09-01T08:00:02.000Z",
@@ -371,7 +386,17 @@ test("reports an absent database as an empty summary with no policy or requested
     })
     expect(summary.databaseState).toEqual("missing")
     expect(summary.schemaVersion).toEqual(null)
-    expect(summary.counts).toEqual({ observations: 0, approvals: 0, rejections: 0, unresolved: 0, distinctSessions: 0 })
+    expect(summary.counts).toEqual({
+      observations: 0,
+      approvals: 0,
+      approvalsBySource: { "1": 0, "2": 0 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 0 },
+      rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
+      unresolved: 0,
+      distinctSessions: 0,
+    })
     expect(summary.inputs).toEqual([])
     expect(summary.effectivePolicy).toEqual(null)
   } finally {

@@ -20,6 +20,10 @@ export interface InsertObservationOptions {
   askedAt: string
   decidedAt?: string | null
   completedAt?: string | null
+  historySourceVersion?: 1 | 2
+  tool?: string | null
+  execution?: "success" | "failure" | "incomplete"
+  exitCode?: number | null
 }
 
 /**
@@ -66,8 +70,8 @@ export function insertObservation(dbPath: string, options: InsertObservationOpti
       .query(
         `INSERT INTO observations
           (request_id, session_id, repository_identity, worktree, agent, action,
-           asked_at, decision, decided_at, execution, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'success', ?)`,
+           history_source_version, asked_at, decision, decided_at, tool, execution, exit_code, completed_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         options.requestId,
@@ -76,9 +80,13 @@ export function insertObservation(dbPath: string, options: InsertObservationOpti
         options.worktree,
         AGENT,
         options.permission,
+        options.historySourceVersion ?? 2,
         options.askedAt,
         options.decision ?? "once",
         options.decidedAt ?? null,
+        options.tool ?? null,
+        options.execution ?? "success",
+        options.exitCode ?? null,
         options.completedAt ?? null,
       )
     const observationId = Number(result.lastInsertRowid)

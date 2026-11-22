@@ -175,8 +175,11 @@ function buildDatabaseReport({ opened, ...context }: DatabaseReportContext): Rec
     return buildMissingDatabaseReport(context.base)
   }
   if (opened.state === "incompatible") {
+    const found = opened.foundSchemaVersion ?? "unknown"
     throw new Error(
-      `incompatible schema: expected ${opened.schemaVersion}, found ${opened.foundSchemaVersion ?? "unknown"}`,
+      `incompatible schema: expected ${opened.schemaVersion}, found ${found}; ` +
+        `when the found version is older, start the upgraded permission-optimizer plugin to migrate this history, ` +
+        `and when it is newer, update the opencode-permission-optimizer skill`,
     )
   }
   return buildAvailableDatabaseReport({ ...context, opened })
@@ -187,7 +190,17 @@ function buildMissingDatabaseReport(base: Record<string, unknown>): Record<strin
     ...base,
     databaseState: "missing",
     schemaVersion: null,
-    counts: { observations: 0, approvals: 0, rejections: 0, unresolved: 0, distinctSessions: 0 },
+    counts: {
+      observations: 0,
+      approvals: 0,
+      approvalsBySource: { "1": 0, "2": 0 },
+      qualifyingApprovalsBySource: { "1": 0, "2": 0 },
+      rejections: 0,
+      derivedApprovals: 0,
+      derivedRejections: 0,
+      unresolved: 0,
+      distinctSessions: 0,
+    },
     effectivePolicy: null,
     inputs: [],
   }

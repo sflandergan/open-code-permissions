@@ -40,16 +40,34 @@ export interface AgentHistoryQuery {
 }
 
 /**
- * Everything counted for one requested pattern inside a permission decision
+ * Counts split by the OpenCode major version that recorded the observation:
+ * key `"1"` is legacy history, key `"2"` is current 2.x history.
+ */
+export interface SourceBreakdown {
+  "1": number
+  "2": number
+}
+
+/**
+ * Everything counted for one requested resource inside a permission decision
  * history. Counts are deduplicated by observation, so one observation
- * contributes once per count even when it carries several requested patterns.
+ * contributes once per count even when it carries several requested resources.
+ * Approvals count reported `once`/`always` outcomes whatever the completion;
+ * `qualifyingApprovalsBySource` additionally requires successful completion,
+ * a known repository identity, and a known agent; `successfulOnceApprovalsBySource`
+ * is the qualifying subset with a `once` reply.
  */
 export interface PatternDecisionHistory {
   permission: string
   input: string
   requests: number
   approvals: number
+  approvalsBySource: SourceBreakdown
+  qualifyingApprovalsBySource: SourceBreakdown
+  successfulOnceApprovalsBySource: SourceBreakdown
   rejections: number
+  derivedApprovals: number
+  derivedRejections: number
   unresolved: number
   distinctSessions: number
   firstActivityAt: string | null
@@ -60,15 +78,21 @@ export interface PatternDecisionHistory {
 /**
  * Complete retained permission decision history for an agent history query:
  * observation, approval, rejection, unresolved, and distinct-session counts
- * plus one entry per requested pattern. Counts are deduplicated by
- * observation, so one observation with several requested patterns contributes
- * once to each count.
+ * plus one entry per requested resource. Counts are deduplicated by
+ * observation, so one observation with several requested resources contributes
+ * once to each count. Legacy derived outcomes stay visible in
+ * `derivedApprovals`/`derivedRejections` and never count as approvals or
+ * rejections.
  */
 export interface PermissionDecisionHistory {
   counts: {
     observations: number
     approvals: number
+    approvalsBySource: SourceBreakdown
+    qualifyingApprovalsBySource: SourceBreakdown
     rejections: number
+    derivedApprovals: number
+    derivedRejections: number
     unresolved: number
     distinctSessions: number
   }
@@ -90,15 +114,25 @@ interface ObservedPatternDecision {
   completed_at: string | null
   decision: string | null
   qualifying_approval: number
+  history_source_version: number
   pattern: string
+}
+
+/** Observation-id sets split by the recording OpenCode major version. */
+interface SourceSets {
+  approvals: Map<number, Set<number>>
+  qualifying: Map<number, Set<number>>
+  successfulOnce: Map<number, Set<number>>
 }
 
 interface PatternAggregate {
   permission: string
   pattern: string
   requestIds: Set<string>
-  approvalObservationIds: Set<number>
+  sourceSets: SourceSets
   rejectionObservationIds: Set<number>
+  derivedApprovalObservationIds: Set<number>
+  derivedRejectionObservationIds: Set<number>
   unresolvedObservationIds: Set<number>
   sessionIds: Set<string>
   firstActivityAt: string | null
@@ -110,8 +144,10 @@ interface AgentHistoryAggregate {
   patterns: Map<string, PatternAggregate>
   sessionIds: Set<string>
   observationIds: Set<number>
-  approvalObservationIds: Set<number>
+  sourceSets: SourceSets
   rejectionObservationIds: Set<number>
+  derivedApprovalObservationIds: Set<number>
+  derivedRejectionObservationIds: Set<number>
   unresolvedObservationIds: Set<number>
 }
 
@@ -222,7 +258,8 @@ function queryObservedPatternDecisions(db: Database, { repositoryIdentity, agent
   return db
     .query(
       `SELECT o.id, o.request_id, o.session_id, o.action AS permission, o.worktree, o.asked_at,
-              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, rr.resource AS pattern
+              o.decided_at, o.completed_at, o.decision, o.qualifying_approval, o.history_source_version,
+              rr.resource AS pattern
        FROM observations o
        JOIN requested_resources rr ON rr.observation_id = o.id
        WHERE o.${identityClause}
@@ -234,13 +271,48 @@ function queryObservedPatternDecisions(db: Database, { repositoryIdentity, agent
     .all(...params) as ObservedPatternDecision[]
 }
 
+function createSourceSets(): SourceSets {
+  return { approvals: new Map(), qualifying: new Map(), successfulOnce: new Map() }
+}
+
+function addToSourceSet(sets: Map<number, Set<number>>, source: number, observationId: number): void {
+  const existing = sets.get(source)
+  if (existing !== undefined) {
+    existing.add(observationId)
+    return
+  }
+  sets.set(source, new Set([observationId]))
+}
+
+/**
+ * Records one observation's outcome into the source-split and plain
+ * observation-id sets, both at the aggregate and per-resource level.
+ * Reported `once`/`always` outcomes are approvals whatever the completion;
+ * qualifying evidence additionally requires the generated qualifying flag;
+ * legacy derived outcomes land in their own sets.
+ */
+function recordOutcome(target: { sourceSets: SourceSets }, decision: ObservedPatternDecision): void {
+  const source = decision.history_source_version
+  if (decision.decision === "once" || decision.decision === "always") {
+    addToSourceSet(target.sourceSets.approvals, source, decision.id)
+  }
+  if (decision.qualifying_approval === 1) {
+    addToSourceSet(target.sourceSets.qualifying, source, decision.id)
+    if (decision.decision === "once") {
+      addToSourceSet(target.sourceSets.successfulOnce, source, decision.id)
+    }
+  }
+}
+
 function aggregateObservations(decisions: ObservedPatternDecision[]): AgentHistoryAggregate {
   const aggregate: AgentHistoryAggregate = {
     patterns: new Map(),
     sessionIds: new Set(),
     observationIds: new Set(),
-    approvalObservationIds: new Set(),
+    sourceSets: createSourceSets(),
     rejectionObservationIds: new Set(),
+    derivedApprovalObservationIds: new Set(),
+    derivedRejectionObservationIds: new Set(),
     unresolvedObservationIds: new Set(),
   }
   for (const decision of decisions) {
@@ -253,25 +325,30 @@ function addObservationToAggregate(aggregate: AgentHistoryAggregate, decision: O
   const activity = decision.completed_at ?? decision.decided_at ?? decision.asked_at
   aggregate.observationIds.add(decision.id)
   aggregate.sessionIds.add(decision.session_id)
+  recordOutcome(aggregate, decision)
+  recordPlainOutcome(aggregate.rejectionObservationIds, aggregate.derivedApprovalObservationIds, aggregate.derivedRejectionObservationIds, aggregate.unresolvedObservationIds, decision)
   const key = JSON.stringify([decision.permission, decision.pattern])
   const entry = findOrCreatePatternAggregate(aggregate.patterns, key, decision)
   entry.requestIds.add(decision.request_id)
-  if (decision.qualifying_approval === 1) {
-    entry.approvalObservationIds.add(decision.id)
-    aggregate.approvalObservationIds.add(decision.id)
-  }
-  if (decision.decision === "reject") {
-    entry.rejectionObservationIds.add(decision.id)
-    aggregate.rejectionObservationIds.add(decision.id)
-  }
-  if (decision.decision === "unresolved") {
-    entry.unresolvedObservationIds.add(decision.id)
-    aggregate.unresolvedObservationIds.add(decision.id)
-  }
+  recordOutcome(entry, decision)
+  recordPlainOutcome(entry.rejectionObservationIds, entry.derivedApprovalObservationIds, entry.derivedRejectionObservationIds, entry.unresolvedObservationIds, decision)
   entry.sessionIds.add(decision.session_id)
   entry.worktrees.add(decision.worktree)
   if (entry.firstActivityAt === null || activity < entry.firstActivityAt) entry.firstActivityAt = activity
   if (entry.lastActivityAt === null || activity > entry.lastActivityAt) entry.lastActivityAt = activity
+}
+
+function recordPlainOutcome(
+  rejections: Set<number>,
+  derivedApprovals: Set<number>,
+  derivedRejections: Set<number>,
+  unresolved: Set<number>,
+  decision: ObservedPatternDecision,
+): void {
+  if (decision.decision === "reject") rejections.add(decision.id)
+  if (decision.decision === "always-derived") derivedApprovals.add(decision.id)
+  if (decision.decision === "rejection-derived") derivedRejections.add(decision.id)
+  if (decision.decision === "unresolved") unresolved.add(decision.id)
 }
 
 function findOrCreatePatternAggregate(
@@ -285,8 +362,10 @@ function findOrCreatePatternAggregate(
     permission: decision.permission,
     pattern: decision.pattern,
     requestIds: new Set(),
-    approvalObservationIds: new Set(),
+    sourceSets: createSourceSets(),
     rejectionObservationIds: new Set(),
+    derivedApprovalObservationIds: new Set(),
+    derivedRejectionObservationIds: new Set(),
     unresolvedObservationIds: new Set(),
     sessionIds: new Set(),
     firstActivityAt: null,
@@ -297,6 +376,10 @@ function findOrCreatePatternAggregate(
   return created
 }
 
+function buildSourceBreakdown(sets: Map<number, Set<number>>): SourceBreakdown {
+  return { "1": sets.get(1)?.size ?? 0, "2": sets.get(2)?.size ?? 0 }
+}
+
 function buildDecisionHistory(aggregate: AgentHistoryAggregate): PermissionDecisionHistory {
   const sortedPatterns = [...aggregate.patterns.values()]
     .map((entry) => buildPatternDecisionHistory(entry))
@@ -305,8 +388,12 @@ function buildDecisionHistory(aggregate: AgentHistoryAggregate): PermissionDecis
   return {
     counts: {
       observations: aggregate.observationIds.size,
-      approvals: aggregate.approvalObservationIds.size,
+      approvals: countSourceSets(aggregate.sourceSets.approvals),
+      approvalsBySource: buildSourceBreakdown(aggregate.sourceSets.approvals),
+      qualifyingApprovalsBySource: buildSourceBreakdown(aggregate.sourceSets.qualifying),
       rejections: aggregate.rejectionObservationIds.size,
+      derivedApprovals: aggregate.derivedApprovalObservationIds.size,
+      derivedRejections: aggregate.derivedRejectionObservationIds.size,
       unresolved: aggregate.unresolvedObservationIds.size,
       distinctSessions: aggregate.sessionIds.size,
     },
@@ -314,13 +401,24 @@ function buildDecisionHistory(aggregate: AgentHistoryAggregate): PermissionDecis
   }
 }
 
+function countSourceSets(sets: Map<number, Set<number>>): number {
+  let total = 0
+  for (const ids of sets.values()) total += ids.size
+  return total
+}
+
 function buildPatternDecisionHistory(entry: PatternAggregate): PatternDecisionHistory {
   return {
     permission: entry.permission,
     input: entry.pattern,
     requests: entry.requestIds.size,
-    approvals: entry.approvalObservationIds.size,
+    approvals: countSourceSets(entry.sourceSets.approvals),
+    approvalsBySource: buildSourceBreakdown(entry.sourceSets.approvals),
+    qualifyingApprovalsBySource: buildSourceBreakdown(entry.sourceSets.qualifying),
+    successfulOnceApprovalsBySource: buildSourceBreakdown(entry.sourceSets.successfulOnce),
     rejections: entry.rejectionObservationIds.size,
+    derivedApprovals: entry.derivedApprovalObservationIds.size,
+    derivedRejections: entry.derivedRejectionObservationIds.size,
     unresolved: entry.unresolvedObservationIds.size,
     distinctSessions: entry.sessionIds.size,
     firstActivityAt: entry.firstActivityAt,
